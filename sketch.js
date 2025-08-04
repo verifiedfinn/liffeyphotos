@@ -90,10 +90,9 @@ function windowResized() {
 }
 
 function getAutoplaySpeed() {
-  let base = centeredView ? 0.4 : 0.02;
+  let base = centeredView ? 0.02 : 0.02; // same speed for both modes
   return base * autoplaySpeed;
 }
-
 function getActiveImages() {
   return centeredView ? centeredImages : images;
 }
@@ -258,12 +257,13 @@ function mousePressed() {
   // --- 3. Bottom buttons (arrow, autoplay, centered)
   let size = 32;
   let gap = 10;
-  let startX = width - (size * 3 + gap * 3);
+  let startX = width - (size * 4 + gap * 4);
   let y = height - sliderAnim * sliderHeight - size - 10;
 
   let arrowX = startX;
   let playX = arrowX + size + gap;
   let centerX = playX + size + gap;
+  let fullscreenX = centerX + size + gap;
 
   if (mouseX > arrowX && mouseX < arrowX + size && mouseY > y && mouseY < y + size) {
     showArrows = !showArrows;
@@ -278,6 +278,12 @@ function mousePressed() {
     scrollAmount = targetScroll = 0;
     return;
   }
+
+  if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
+  fullscreen(!fullscreen());
+  return;
+}
+
 
   // --- 4. Begin dragging slider if clicked inside slider area
   if (sliderVisible && mouseY > height - sliderAnim * sliderHeight) {
@@ -370,7 +376,7 @@ function drawSliderTab() {
 function drawBottomButtons() {
   let size = 32;
   let gap = 10;
-  let startX = width - (size * 3 + gap * 3);
+  let startX = width - (size * 4 + gap * 4);
   let y = height - sliderAnim * sliderHeight - size - 10;
 
   // Arrows toggle button
@@ -421,10 +427,25 @@ function drawBottomButtons() {
   } else {
     speedSlider.hide();
   }
+
+  // Fullscreen toggle button
+let fsX = centerX + size + gap;
+fill(fullscreen() ? color(0, 255, 255) : color(0, 180));
+stroke(255);
+strokeWeight(1);
+rect(fsX, y, size, size, 6);
+noStroke();
+fill(255);
+textAlign(CENTER, CENTER);
+textSize(14);
+text("⛶", fsX + size / 2, y + size / 2); // fullscreen symbol
+textSize(10);
+text("Full", fsX + size / 2, y - 8);
 }
 
 
 function keyPressed() {
   if (key === "c" || key === "C") centeredView = !centeredView;
 }
+
 

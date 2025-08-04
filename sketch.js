@@ -257,7 +257,7 @@ function mousePressed() {
   // --- 3. Bottom buttons (arrow, autoplay, centered)
   let size = 32;
   let gap = 10;
-  let startX = width - (size * 4 + gap * 4);
+  let startX = width - (size * 3 + gap * 3);
   let y = height - sliderAnim * sliderHeight - size - 10;
 
   let arrowX = startX;
@@ -447,6 +447,7 @@ text("Full", fsX + size / 2, y - 8);
 function keyPressed() {
   if (key === "c" || key === "C") centeredView = !centeredView;
 }
+
 
 
 

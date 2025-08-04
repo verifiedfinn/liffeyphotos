@@ -263,7 +263,7 @@ function mousePressed() {
   let arrowX = startX;
   let playX = arrowX + size + gap;
   let centerX = playX + size + gap;
-  let fullscreenX = centerX + size + gap;
+ // let fullscreenX = centerX + size + gap;
 
   if (mouseX > arrowX && mouseX < arrowX + size && mouseY > y && mouseY < y + size) {
     showArrows = !showArrows;
@@ -279,10 +279,10 @@ function mousePressed() {
     return;
   }
 
-  if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
-  fullscreen(!fullscreen());
-  return;
-}
+//  if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
+//  fullscreen(!fullscreen());
+//  return;
+//}
 
 
   // --- 4. Begin dragging slider if clicked inside slider area
@@ -447,5 +447,6 @@ text("Full", fsX + size / 2, y - 8);
 function keyPressed() {
   if (key === "c" || key === "C") centeredView = !centeredView;
 }
+
 
 

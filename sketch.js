@@ -279,10 +279,17 @@ function mousePressed() {
     return;
   }
 
-//  if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
-//  fullscreen(!fullscreen());
-//  return;
-//}
+if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
+  let fsEl = document.documentElement;
+  if (!document.fullscreenElement) {
+    fsEl.requestFullscreen().catch(err => {
+      console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+  return;
+}
 
 
   // --- 4. Begin dragging slider if clicked inside slider area
@@ -430,7 +437,7 @@ function drawBottomButtons() {
 
   // Fullscreen toggle button
 let fsX = centerX + size + gap;
-fill(fullscreen() ? color(0, 255, 255) : color(0, 180));
+fill(document.fullscreenElement ? color(0, 255, 255) : color(0, 180));
 stroke(255);
 strokeWeight(1);
 rect(fsX, y, size, size, 6);
@@ -447,6 +454,7 @@ text("Full", fsX + size / 2, y - 8);
 function keyPressed() {
   if (key === "c" || key === "C") centeredView = !centeredView;
 }
+
 
 
 

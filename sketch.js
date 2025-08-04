@@ -257,13 +257,13 @@ function mousePressed() {
   // --- 3. Bottom buttons (arrow, autoplay, centered)
   let size = 32;
   let gap = 10;
-  let startX = width - (size * 3 + gap * 3);
+  let startX = width - (size * 4 + gap * 4);
   let y = height - sliderAnim * sliderHeight - size - 10;
 
   let arrowX = startX;
   let playX = arrowX + size + gap;
   let centerX = playX + size + gap;
- // let fullscreenX = centerX + size + gap;
+  let fullscreenX = centerX + size + gap;
 
   if (mouseX > arrowX && mouseX < arrowX + size && mouseY > y && mouseY < y + size) {
     showArrows = !showArrows;
@@ -453,6 +453,18 @@ text("Full", fsX + size / 2, y - 8);
 
 function keyPressed() {
   if (key === "c" || key === "C") centeredView = !centeredView;
+
+  if (keyCode === 122) { // F11 key
+    let fsEl = document.documentElement;
+    if (!document.fullscreenElement) {
+      fsEl.requestFullscreen().catch(err => {
+        console.error(`Error enabling full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+    return false; // prevent default F11 behavior
+  }
 }
 
 

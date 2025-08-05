@@ -31,6 +31,10 @@ let autoplaySpeed = 1;
 
 let imageOrder = [];
 
+function isMobileLayout() {
+  return width < 600;
+}
+
 function preload() {
   loadJSON("images.json", (data) => {
     allImageURLs = data;
@@ -77,17 +81,22 @@ function setup() {
   createSpeedSlider();
 }
 
+function positionSpeedSlider() {
+  let y = isMobileLayout() ? 60 : height - 40;
+  speedSlider.position(20, y);
+}
+
 function createSpeedSlider() {
   speedSlider = createSlider(0.1, 3, 1, 0.1);
-  speedSlider.position(20, height - 40);
   speedSlider.style("width", "120px");
   speedSlider.input(() => autoplaySpeed = speedSlider.value());
+  positionSpeedSlider();
   speedSlider.hide();
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  speedSlider.position(20, height - 40); // keep it consistent
+  positionSpeedSlider();
 }
 
 function getAutoplaySpeed() {
@@ -224,8 +233,8 @@ function mousePressed() {
   let tabW = 120;
   let tabH = 20;
   let tabX = width / 2 - tabW / 2;
-  let tabY = height - sliderAnim * sliderHeight - tabH + 1;
-
+  let isMobile = isMobileLayout();
+  let tabY = isMobile ? height - 80 : height - sliderAnim * sliderHeight - tabH + 1;
   // --- 1. First check for arrow click (take priority and block everything else)
   if (showArrows && mouseY > height / 2 - 40 && mouseY < height / 2 + 40) {
     if (mouseX < 60) {
@@ -258,7 +267,6 @@ function mousePressed() {
   // --- 3. Bottom buttons (arrow, autoplay, centered)
   let size = 32;
   let gap = 10;
-let isMobile = width < 600;
 let startX = isMobile ? 10 : width - (size * 4 + gap * 4);
 let y = isMobile ? 10 : height - sliderAnim * sliderHeight - size - 10;
 
@@ -387,8 +395,9 @@ function drawSliderTab() {
 function drawBottomButtons() {
   let size = 32;
   let gap = 10;
-  let startX = width - (size * 4 + gap * 4);
-  let y = height - sliderAnim * sliderHeight - size - 10;
+let isMobile = isMobileLayout();
+let startX = isMobile ? 10 : width - (size * 4 + gap * 4);
+let y = isMobile ? 10 : height - sliderAnim * sliderHeight - size - 10;
 
   // Arrows toggle button
   let arrowX = startX;
@@ -471,6 +480,17 @@ function keyPressed() {
   }
 }
 
+function touchStarted() {
+  mousePressed();
+  return false;
+}
 
+function touchMoved() {
+  mouseDragged();
+  return false;
+}
 
-
+function touchEnded() {
+  mouseReleased();
+  return false;
+}

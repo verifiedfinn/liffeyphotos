@@ -452,6 +452,7 @@ if (!isEmbedded) {
   textSize(10);
   text("Full", fsX + size / 2, y - 8);
 }
+  }
 
 
 
@@ -470,6 +471,7 @@ function keyPressed() {
     return false; // prevent default F11 behavior
   }
 }
+
 
 
 

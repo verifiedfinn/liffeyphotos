@@ -3,6 +3,7 @@ let images = [];
 let centeredImages = [];
 let allImageURLs = { normal: [], centered: [] };
 let numImages = 0;
+let isEmbedded = window.self !== window.top;
 
 let scrollAmount = 0;
 let targetScroll = 0;
@@ -279,16 +280,18 @@ function mousePressed() {
     return;
   }
 
-if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
-  let fsEl = document.documentElement;
-  if (!document.fullscreenElement) {
-    fsEl.requestFullscreen().catch(err => {
-      console.error(`Error attempting to enable full-screen mode: ${err.message}`);
-    });
-  } else {
-    document.exitFullscreen();
+if (!isEmbedded) {
+  if (mouseX > fullscreenX && mouseX < fullscreenX + size && mouseY > y && mouseY < y + size) {
+    let fsEl = document.documentElement;
+    if (!document.fullscreenElement) {
+      fsEl.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+    return;
   }
-  return;
 }
 
 
@@ -435,20 +438,21 @@ function drawBottomButtons() {
     speedSlider.hide();
   }
 
-  // Fullscreen toggle button
-let fsX = centerX + size + gap;
-fill(document.fullscreenElement ? color(0, 255, 255) : color(0, 180));
-stroke(255);
-strokeWeight(1);
-rect(fsX, y, size, size, 6);
-noStroke();
-fill(255);
-textAlign(CENTER, CENTER);
-textSize(14);
-text("⛶", fsX + size / 2, y + size / 2); // fullscreen symbol
-textSize(10);
-text("Full", fsX + size / 2, y - 8);
+if (!isEmbedded) {
+  let fsX = centerX + size + gap;
+  fill(document.fullscreenElement ? color(0, 255, 255) : color(0, 180));
+  stroke(255);
+  strokeWeight(1);
+  rect(fsX, y, size, size, 6);
+  noStroke();
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(14);
+  text("⛶", fsX + size / 2, y + size / 2); // fullscreen symbol
+  textSize(10);
+  text("Full", fsX + size / 2, y - 8);
 }
+
 
 
 function keyPressed() {
@@ -466,6 +470,7 @@ function keyPressed() {
     return false; // prevent default F11 behavior
   }
 }
+
 
 
 

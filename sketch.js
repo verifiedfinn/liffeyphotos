@@ -39,10 +39,22 @@ function preload() {
   loadJSON("images.json", (data) => {
     allImageURLs = data;
     imageOrder = data.normal.slice(); // preserve order
-    images = new Array(data.normal.length).fill(null);
-    centeredImages = new Array(data.centered.length).fill(null);
-  });
-}
+
+    let allURLs = [...data.normal, ...data.centered];
+    let seen = new Set(allURLs);
+    let totalToLoad = seen.size;
+    let loadedSoFar = 0;
+
+    images = new Array(data.normal.length);
+    centeredImages = new Array(data.centered.length);
+
+    data.normal.forEach((url, i) => {
+      loadImage(url, (img) => {
+        images[i] = img;
+        loadedSoFar++;
+        if (loadedSoFar === totalToLoad) loading = false;
+      });
+    });
 
     let reversed = data.centered.slice().reverse();
     reversed.forEach((url, i) => {
@@ -499,5 +511,6 @@ function touchEnded() {
   mouseReleased();
   return false;
 }
+
 
 

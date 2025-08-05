@@ -4,6 +4,8 @@ let centeredImages = [];
 let allImageURLs = { normal: [], centered: [] };
 let numImages = 0;
 let isEmbedded = window.self !== window.top;
+let sketchStarted = false;
+let tapToStart = true;
 
 let scrollAmount = 0;
 let targetScroll = 0;
@@ -38,7 +40,7 @@ function isMobileLayout() {
 function preload() {
   loadJSON("images.json", (data) => {
     allImageURLs = data;
-    imageOrder = data.normal.slice(); // preserve order
+    imageOrder = data.normal.slice(); // preserve original order
 
     let allURLs = [...data.normal, ...data.centered];
     let seen = new Set(allURLs);
@@ -74,22 +76,24 @@ function checkIfDone() {
 }
 
 function setup() {
+  noCanvas(); 
+  createSpeedSlider();
+  positionSpeedSlider();
+}
+
+function startSketch() {
+  if (sketchStarted) return;
+  sketchStarted = true;
   createCanvas(windowWidth, windowHeight);
   background(0);
   imageMode(CENTER);
   textFont("Helvetica");
-  createSpeedSlider();
+  positionSpeedSlider();
 }
 
 function positionSpeedSlider() {
-  if (isMobileLayout()) {
-    let sliderWidth = 120;
-    speedSlider.style("width", sliderWidth + "px");
-    speedSlider.position(width - sliderWidth - 20, 10); // right aligned, 10px from top-right
-  } else {
-    speedSlider.style("width", "120px");
-    speedSlider.position(20, height - 40); // bottom left for desktop
-  }
+  let y = isMobileLayout() ? 60 : height - 40;
+  speedSlider.position(20, y);
 }
 
 function createSpeedSlider() {
@@ -110,22 +114,18 @@ function getAutoplaySpeed() {
   return base * autoplaySpeed;
 }
 function getActiveImages() {
-  let list = centeredView ? centeredImages : images;
-  let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
-
-  for (let i = 0; i < list.length; i++) {
-    if (!list[i]) {
-      // Lazy load one image per frame
-      list[i] = loadImage(urls[i], () => {}, () => {});
-      break;
-    }
-  }
-
-  return list;
+  return centeredView ? centeredImages : images;
 }
 
 function draw() {
-  background(0);
+  if (!sketchStarted) {
+    background(0);
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(24);
+    text("Tap to begin", width / 2, height / 2);
+    return;
+  }
 
   if (loading) {
     drawLoadingSpinner();
@@ -498,6 +498,7 @@ function keyPressed() {
 }
 
 function touchStarted() {
+  if (!sketchStarted) startSketch();
   mousePressed();
   return false;
 }
@@ -511,6 +512,3 @@ function touchEnded() {
   mouseReleased();
   return false;
 }
-
-
-

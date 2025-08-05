@@ -437,10 +437,20 @@ function drawBottomButtons() {
   } else {
     speedSlider.hide();
   }
-  if (!isEmbedded) {
-    let fsX = centerX + size + gap;
-    text("Full", fsX + size / 2, y - 8);
-  }
+if (!isEmbedded) {
+  let fsX = centerX + size + gap;
+  fill(0, 180);
+  stroke(255);
+  strokeWeight(1);
+  rect(fsX, y, size, size, 6); 
+  noStroke();
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(14);
+  text("⛶", fsX + size / 2, y + size / 2); 
+  textSize(10);
+  text("Full", fsX + size / 2, y - 8);
+}
 }
 
 
@@ -459,5 +469,6 @@ function keyPressed() {
     return false; // prevent default F11 behavior
   }
 }
+
 
 

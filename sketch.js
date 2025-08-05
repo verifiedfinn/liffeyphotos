@@ -258,8 +258,9 @@ function mousePressed() {
   // --- 3. Bottom buttons (arrow, autoplay, centered)
   let size = 32;
   let gap = 10;
-  let startX = width - (size * 4 + gap * 4);
-  let y = height - sliderAnim * sliderHeight - size - 10;
+let isMobile = width < 600;
+let startX = isMobile ? 10 : width - (size * 4 + gap * 4);
+let y = isMobile ? 10 : height - sliderAnim * sliderHeight - size - 10;
 
   let arrowX = startX;
   let playX = arrowX + size + gap;
@@ -469,6 +470,7 @@ function keyPressed() {
     return false; // prevent default F11 behavior
   }
 }
+
 
 
 

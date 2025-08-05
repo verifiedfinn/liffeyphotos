@@ -38,23 +38,11 @@ function isMobileLayout() {
 function preload() {
   loadJSON("images.json", (data) => {
     allImageURLs = data;
-    imageOrder = data.normal.slice(); // preserve original order
-
-    let allURLs = [...data.normal, ...data.centered];
-    let seen = new Set(allURLs);
-    let totalToLoad = seen.size;
-    let loadedSoFar = 0;
-
-    images = new Array(data.normal.length);
-    centeredImages = new Array(data.centered.length);
-
-    data.normal.forEach((url, i) => {
-      loadImage(url, (img) => {
-        images[i] = img;
-        loadedSoFar++;
-        if (loadedSoFar === totalToLoad) loading = false;
-      });
-    });
+    imageOrder = data.normal.slice(); // preserve order
+    images = new Array(data.normal.length).fill(null);
+    centeredImages = new Array(data.centered.length).fill(null);
+  });
+}
 
     let reversed = data.centered.slice().reverse();
     reversed.forEach((url, i) => {
@@ -104,7 +92,18 @@ function getAutoplaySpeed() {
   return base * autoplaySpeed;
 }
 function getActiveImages() {
-  return centeredView ? centeredImages : images;
+  let list = centeredView ? centeredImages : images;
+  let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
+
+  for (let i = 0; i < list.length; i++) {
+    if (!list[i]) {
+      // Lazy load one image per frame
+      list[i] = loadImage(urls[i], () => {}, () => {});
+      break;
+    }
+  }
+
+  return list;
 }
 
 function draw() {
@@ -494,3 +493,4 @@ function touchEnded() {
   mouseReleased();
   return false;
 }
+

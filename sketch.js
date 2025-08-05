@@ -70,8 +70,14 @@ function setup() {
 }
 
 function positionSpeedSlider() {
-  let y = isMobileLayout() ? 60 : height - 40;
-  speedSlider.position(20, y);
+  if (isMobileLayout()) {
+    let sliderWidth = 120;
+    speedSlider.style("width", sliderWidth + "px");
+    speedSlider.position(width - sliderWidth - 20, 10); // right aligned, 10px from top-right
+  } else {
+    speedSlider.style("width", "120px");
+    speedSlider.position(20, height - 40); // bottom left for desktop
+  }
 }
 
 function createSpeedSlider() {
@@ -493,4 +499,5 @@ function touchEnded() {
   mouseReleased();
   return false;
 }
+
 

@@ -9,8 +9,11 @@ let autoplay = false, centeredView = false, loading = true;
 let loadingSpinnerAngle = 0, thumbWidth, lastScrollIndex = -1;
 let sliderOffset = 0, isDraggingSlider = false, lastDragX = 0;
 
-let showArrows = false, speedSlider, autoplaySpeed = 1;
+let showArrows; // initialize later in setup()
+let speedSlider, autoplaySpeed = 1;
 let overlayDiv, imageOrder = [];
+let suppressDrag = false;
+let dragDistance = 0;
 
 function isMobileLayout() {
   return width < 600;
@@ -35,7 +38,7 @@ function preload() {
       });
     });
 
-    data.centered.slice().reverse().forEach((url, i) => {
+    data.centered.forEach((url, i) => {
       loadImage(url, (img) => {
         centeredImages[i] = img;
         if (++loadedSoFar === totalToLoad) loading = false;
@@ -62,6 +65,7 @@ function setupOverlay() {
 function setup() {
   setupOverlay();
   createCanvas(windowWidth, windowHeight).position(0, 0).style('z-index', '10');
+  showArrows = isMobileLayout();
   background(0);
   imageMode(CENTER);
   textFont("Helvetica");
@@ -77,7 +81,7 @@ function createSpeedSlider() {
 }
 
 function positionSpeedSlider() {
-  speedSlider.position(10, 60); // below top-left buttons
+  speedSlider.position(10, 60);
 }
 
 function windowResized() {
@@ -97,6 +101,7 @@ function startSketch() {
 
     if (autoplay) {
       speedSlider.show();
+      positionSpeedSlider();
     }
   }
 }
@@ -120,12 +125,13 @@ function getActiveImages() {
 }
 
 function draw() {
-  if (!sketchStarted) {
-    background(0);
-    fill(255); textAlign(CENTER, CENTER); textSize(24);
-    text('Tap to begin', width / 2, height / 2);
-    return;
-  }
+if (!sketchStarted) {
+  background(0);
+  fill(255); textAlign(CENTER, CENTER); textSize(24);
+  text('Tap to begin', width / 2, height / 2);
+  speedSlider.hide();  // Always hide if not started
+  return;
+}
 
   background(0);
 
@@ -177,6 +183,13 @@ function draw() {
     textAlign(LEFT, CENTER); text("❮", 20, height / 2);
     textAlign(RIGHT, CENTER); text("❯", width - 20, height / 2);
   }
+
+  if (autoplay) {
+  speedSlider.show();
+  positionSpeedSlider();
+} else {
+  speedSlider.hide();
+}
 }
 
 function drawLoadingSpinner() {
@@ -248,10 +261,12 @@ function drawSliderTab() {
   fill(255); textSize(14); textAlign(CENTER, CENTER);
   text(sliderVisible ? "▼" : "▲", tabW / 2, tabH / 2);
   pop();
+  
 }
 
 function drawBottomButtons() {
-  let fittedSize = 32, gap = 10, startX = 10, y = 10;
+  let fittedSize = 32, gap = 10, startX = 10;
+  let y = 20; // ✅ force top-left for all layouts
 
   let arrowX = startX;
   drawButton(arrowX, y, fittedSize, "⇄", "Arrows", showArrows, () => showArrows = !showArrows);
@@ -260,6 +275,7 @@ function drawBottomButtons() {
   drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () => {
     autoplay = !autoplay;
     autoplay ? speedSlider.show() : speedSlider.hide();
+    positionSpeedSlider();
   });
 
   let centerX = playX + fittedSize + gap;
@@ -284,6 +300,7 @@ function drawButton(x, y, size, symbol, label, active, onClick) {
 }
 
 function mousePressed() {
+  dragDistance = 0;
   let fittedSize = 32, gap = 10, startX = 10, y = 10;
   let arrowX = startX, playX = arrowX + fittedSize + gap;
   let centerX = playX + fittedSize + gap, sliderX = centerX + fittedSize + gap;
@@ -311,16 +328,32 @@ function mousePressed() {
     return;
   }
 
-if (
-  mouseY > 150 &&
+  let arrowZoneW = 80;
+if (showArrows && mouseX < arrowZoneW) {
+  suppressDrag = true;
+  targetScroll = max(0, round(scrollAmount) - 1);
+  return;
+}
+if (showArrows && mouseX > width - arrowZoneW) {
+  suppressDrag = true;
+  targetScroll = min(numImages - 1, round(scrollAmount) + 1);
+  return;
+}
+
+else if (
+  !suppressDrag &&
+  mouseY > 100 &&
   mouseY < height - sliderAnim * sliderHeight - 40 &&
   mouseX > 60 && mouseX < width - 60
 ) {
-    dragging = true;
-    updateDragAmt(mouseX);
-  }
-
-  if (sliderVisible && mouseY > height - sliderAnim * sliderHeight) {
+  dragging = true;
+  updateDragAmt(mouseX);
+}
+  if (
+  sliderVisible &&
+  mouseY > height - sliderAnim * sliderHeight &&
+  dragDistance < 10
+) {
     isDraggingSlider = true;
     lastDragX = mouseX;
   }
@@ -331,7 +364,11 @@ function inside(mx, my, x, y, w, h = w) {
 }
 
 function mouseDragged() {
-  if (dragging) updateDragAmt(mouseX);
+  if (dragging) {
+    dragDistance += abs(mouseX - pmouseX);  // ✅ Track how far user dragged
+    updateDragAmt(mouseX);
+  }
+
   if (isDraggingSlider) {
     let dx = mouseX - lastDragX;
     sliderOffset += dx;
@@ -345,7 +382,35 @@ function mouseReleased() {
     targetScroll = constrain(round(scrollAmount), 0, numImages - 1);
   }
   if (isDraggingSlider) isDraggingSlider = false;
+  suppressDrag = false;
+
+    // Handle thumbnail clicks inside slider
+if (
+  sliderVisible &&
+  mouseY > height - sliderAnim * sliderHeight &&
+  dragDistance < 1 // much more strict
+) {
+  let thumbW = min(60, width / 8);
+  let margin = 10;
+  let x = margin + sliderOffset;
+
+  for (let i = 0; i < numImages; i++) {
+    let thumbH = thumbW * (height / width); // aspect ratio estimate
+    let thumbX = x;
+    let thumbY = height - sliderAnim * sliderHeight + 10;
+
+    if (inside(mouseX, mouseY, thumbX, thumbY, thumbW, thumbH)) {
+      targetScroll = i;
+      dragging = false;
+      suppressDrag = true;
+      return;
+    }
+    x += thumbW + margin;
+  }
 }
+}
+
+suppressDrag = false;
 
 function updateDragAmt(x) {
   dragAmt = constrain(x / width, 0, 1);
@@ -370,3 +435,4 @@ function keyPressed() {
 function touchStarted() { mousePressed(); return false; }
 function touchMoved() { mouseDragged(); return false; }
 function touchEnded() { mouseReleased(); return false; }
+

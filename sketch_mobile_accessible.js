@@ -138,17 +138,23 @@ function getActiveImages() {
   let list = centeredView ? centeredImages : images;
   let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
 
-  // Only check ONCE, not every frame
   let currentIndex = Math.floor(scrollAmount);
-  let nextIndex = currentIndex + 1;
-  
-  // Load current image if not loaded
-  if (!list[currentIndex] && currentIndex < urls.length) {
+  let nextIndex = Math.min(currentIndex + 1, urls.length - 1);
+
+  // Cleanup: aggressively free unused images
+  for (let i = 0; i < list.length; i++) {
+    if (i !== currentIndex && i !== nextIndex && list[i]) {
+      if (list[i].canvas) list[i].canvas = null; // release WebGL buffer
+      list[i] = null; // allow GC to free memory
+    }
+  }
+
+  // Lazy load current and next image
+  if (!list[currentIndex] && urls[currentIndex]) {
     list[currentIndex] = loadImage(urls[currentIndex]);
   }
-  
-  // Load next image if not loaded  
-  if (!list[nextIndex] && nextIndex < urls.length) {
+
+  if (!list[nextIndex] && urls[nextIndex]) {
     list[nextIndex] = loadImage(urls[nextIndex]);
   }
 
@@ -511,6 +517,9 @@ function touchMoved() {
   mouseDragged(); 
   return false; 
 }
+
+function touchEnded() { mouseReleased(); return false; }
+
 
 function touchEnded() { mouseReleased(); return false; }
 

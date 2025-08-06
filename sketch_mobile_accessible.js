@@ -1,0 +1,372 @@
+let sketchStarted = false;
+let images = [], centeredImages = [], allImageURLs = { normal: [], centered: [] };
+let numImages = 0, isEmbedded = window.self !== window.top;
+
+let scrollAmount = 0, targetScroll = 0, dragging = false, dragAmt = 0;
+let sliderVisible = false, sliderHeight = 100, sliderAnim = 0;
+
+let autoplay = false, centeredView = false, loading = true;
+let loadingSpinnerAngle = 0, thumbWidth, lastScrollIndex = -1;
+let sliderOffset = 0, isDraggingSlider = false, lastDragX = 0;
+
+let showArrows = false, speedSlider, autoplaySpeed = 1;
+let overlayDiv, imageOrder = [];
+
+function isMobileLayout() {
+  return width < 600;
+}
+
+function preload() {
+  loadJSON("images.json", (data) => {
+    allImageURLs = data;
+    imageOrder = data.normal.slice();
+
+    let allURLs = [...data.normal, ...data.centered];
+    let seen = new Set(allURLs);
+    let totalToLoad = seen.size, loadedSoFar = 0;
+
+    images = new Array(data.normal.length);
+    centeredImages = new Array(data.centered.length);
+
+    data.normal.forEach((url, i) => {
+      loadImage(url, (img) => {
+        images[i] = img;
+        if (++loadedSoFar === totalToLoad) loading = false;
+      });
+    });
+
+    data.centered.slice().reverse().forEach((url, i) => {
+      loadImage(url, (img) => {
+        centeredImages[i] = img;
+        if (++loadedSoFar === totalToLoad) loading = false;
+      });
+    });
+  });
+}
+
+function setupOverlay() {
+  overlayDiv = createDiv('<div style="color:white; font-family: Helvetica; font-size: 24px;">Tap to Begin</div>');
+  overlayDiv.id('tap-overlay');
+  overlayDiv.style('position', 'fixed');
+  overlayDiv.style('top', '0'); overlayDiv.style('left', '0');
+  overlayDiv.style('width', '100vw'); overlayDiv.style('height', '100vh');
+  overlayDiv.style('background', 'black');
+  overlayDiv.style('display', 'flex');
+  overlayDiv.style('justify-content', 'center');
+  overlayDiv.style('align-items', 'center');
+  overlayDiv.style('z-index', '999');
+  overlayDiv.mousePressed(startSketch);
+  overlayDiv.touchStarted(startSketch);
+}
+
+function setup() {
+  setupOverlay();
+  createCanvas(windowWidth, windowHeight).position(0, 0).style('z-index', '10');
+  background(0);
+  imageMode(CENTER);
+  textFont("Helvetica");
+  createSpeedSlider();
+}
+
+function createSpeedSlider() {
+  speedSlider = createSlider(0.1, 3, 1, 0.1);
+  speedSlider.style("width", "120px");
+  speedSlider.input(() => autoplaySpeed = speedSlider.value());
+  speedSlider.hide();
+  positionSpeedSlider();
+}
+
+function positionSpeedSlider() {
+  speedSlider.position(10, 60); // below top-left buttons
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  positionSpeedSlider();
+}
+
+function startSketch() {
+  if (!sketchStarted) {
+    sketchStarted = true;
+    overlayDiv.remove();
+    mousePressed(); // trigger tap logic
+
+    if (isMobileLayout()) {
+      showArrows = true;
+    }
+
+    if (autoplay) {
+      speedSlider.show();
+    }
+  }
+}
+
+function getAutoplaySpeed() {
+  return 0.02 * autoplaySpeed;
+}
+
+function getActiveImages() {
+  let list = centeredView ? centeredImages : images;
+  let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
+
+  for (let i = 0; i < list.length; i++) {
+    if (!list[i]) {
+      list[i] = loadImage(urls[i]);
+      break;
+    }
+  }
+
+  return list;
+}
+
+function draw() {
+  if (!sketchStarted) {
+    background(0);
+    fill(255); textAlign(CENTER, CENTER); textSize(24);
+    text('Tap to begin', width / 2, height / 2);
+    return;
+  }
+
+  background(0);
+
+  if (loading) {
+    drawLoadingSpinner();
+    return;
+  }
+
+  let activeImages = getActiveImages();
+  numImages = activeImages.length;
+
+  if (autoplay) {
+    targetScroll += getAutoplaySpeed();
+    if (targetScroll >= numImages - 1) targetScroll = 0;
+  }
+
+  scrollAmount = lerp(scrollAmount, targetScroll, dragging ? 0.2 : 0.1);
+  sliderAnim = lerp(sliderAnim, sliderVisible ? 1 : 0, 0.1);
+
+  let indexA = floor(scrollAmount), indexB = min(indexA + 1, numImages - 1);
+  let lerpAmt = dragging ? dragAmt : scrollAmount - indexA;
+  let imgA = activeImages[indexA], imgB = activeImages[indexB];
+
+  if (imgA && imgB) {
+    drawImageFitted(imgA);
+    push();
+    translate(width / 2, height / 2);
+    let fittedSize = getFittedSize(imgB);
+    copy(imgB, 0, 0, int(imgB.width * lerpAmt), imgB.height,
+         -fittedSize.w / 2, -fittedSize.h / 2, int(fittedSize.w * lerpAmt), fittedSize.h);
+    pop();
+
+    let wipeX = (width / 2 - fittedSize.w / 2) + fittedSize.w * lerpAmt;
+    stroke(255); strokeWeight(1);
+    line(wipeX, (height - fittedSize.h) / 2, wipeX, (height + fittedSize.h) / 2);
+    noStroke(); fill(255); ellipse(wipeX, height / 2, 8, 8);
+  }
+
+  drawSlider(activeImages);
+  drawSliderTab();
+  drawBottomButtons();
+  autoScrollThumbBar();
+
+  fill(255, 180); noStroke(); textSize(width < 500 ? 14 : 20); textAlign(CENTER, BOTTOM);
+  text(`Day ${round(scrollAmount) + 1}`, width / 2, height - (sliderAnim * sliderHeight + 50));
+
+  if (showArrows) {
+    noStroke(); fill(255, 180); textSize(40);
+    textAlign(LEFT, CENTER); text("❮", 20, height / 2);
+    textAlign(RIGHT, CENTER); text("❯", width - 20, height / 2);
+  }
+}
+
+function drawLoadingSpinner() {
+  push();
+  translate(width / 2, height / 2);
+  noFill(); stroke(255); strokeWeight(4);
+  rotate(loadingSpinnerAngle);
+  arc(0, 0, 40, 40, 0, PI * 1.5);
+  pop();
+  loadingSpinnerAngle += 0.1;
+}
+
+function drawImageFitted(img) {
+  let { w, h } = getFittedSize(img);
+  image(img, width / 2, height / 2, w, h);
+}
+
+function getFittedSize(img) {
+  let imgAspect = img.width / img.height;
+  let canvasAspect = width / height;
+  let w, h;
+  if (imgAspect > canvasAspect) {
+    w = width; h = width / imgAspect;
+  } else {
+    h = height; w = height * imgAspect;
+  }
+  return { w, h };
+}
+
+function autoScrollThumbBar() {
+  let currentIndex = floor(scrollAmount);
+  if (currentIndex !== lastScrollIndex && thumbWidth && sliderAnim > 0.01) {
+    sliderOffset = -(thumbWidth + 10) * currentIndex + width / 3;
+    lastScrollIndex = currentIndex;
+  }
+}
+
+function drawSlider(imgList) {
+  if (sliderAnim > 0.01) {
+    noStroke(); fill(0, 230);
+    rect(0, height - sliderAnim * sliderHeight, width, sliderAnim * sliderHeight);
+
+    thumbWidth = min(60, width / 8);
+    let margin = 10, x = margin + sliderOffset;
+    for (let i = 0; i < imgList.length; i++) {
+      let y = height - sliderAnim * sliderHeight + 10;
+      let img = imgList[i];
+      let thumbH = thumbWidth * (img.height / img.width);
+      image(img, x + thumbWidth / 2, y + thumbH / 2, thumbWidth, thumbH);
+      if (i === round(scrollAmount)) {
+        stroke(255); strokeWeight(2); noFill();
+        rect(x - 2, y - 2, thumbWidth + 4, thumbH + 4, 6);
+      }
+      x += thumbWidth + margin;
+    }
+  }
+}
+
+function drawSliderTab() {
+  let tabW = 120, tabH = 20, tabX = width / 2 - tabW / 2;
+  let tabY = height - tabH;
+
+  push(); translate(tabX, tabY);
+  noStroke(); fill(0, 180);
+  beginShape();
+  vertex(0, tabH); vertex(0, 6); quadraticVertex(0, 0, 6, 0);
+  vertex(tabW - 6, 0); quadraticVertex(tabW, 0, tabW, 6); vertex(tabW, tabH);
+  endShape(CLOSE);
+  fill(255); textSize(14); textAlign(CENTER, CENTER);
+  text(sliderVisible ? "▼" : "▲", tabW / 2, tabH / 2);
+  pop();
+}
+
+function drawBottomButtons() {
+  let fittedSize = 32, gap = 10, startX = 10, y = 10;
+
+  let arrowX = startX;
+  drawButton(arrowX, y, fittedSize, "⇄", "Arrows", showArrows, () => showArrows = !showArrows);
+
+  let playX = arrowX + fittedSize + gap;
+  drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () => {
+    autoplay = !autoplay;
+    autoplay ? speedSlider.show() : speedSlider.hide();
+  });
+
+  let centerX = playX + fittedSize + gap;
+  drawButton(centerX, y, fittedSize, "C", "Centered", centeredView, () => {
+    centeredView = !centeredView;
+    scrollAmount = targetScroll = 0;
+  });
+
+  let sliderX = centerX + fittedSize + gap;
+  drawButton(sliderX, y, fittedSize, "⇵", "Slider", sliderVisible, () => {
+    sliderVisible = !sliderVisible;
+  });
+}
+
+function drawButton(x, y, size, symbol, label, active, onClick) {
+  fill(active ? color(0, 255, 255) : color(0, 180));
+  stroke(255); strokeWeight(1);
+  rect(x, y, size, size, 6);
+  noStroke(); fill(255); textAlign(CENTER, CENTER);
+  textSize(14); text(symbol, x + size / 2, y + size / 2);
+  textSize(10); text(label, x + size / 2, y - 8);
+}
+
+function mousePressed() {
+  let fittedSize = 32, gap = 10, startX = 10, y = 10;
+  let arrowX = startX, playX = arrowX + fittedSize + gap;
+  let centerX = playX + fittedSize + gap, sliderX = centerX + fittedSize + gap;
+
+  if (inside(mouseX, mouseY, arrowX, y, fittedSize)) return showArrows = !showArrows;
+  if (inside(mouseX, mouseY, playX, y, fittedSize)) {
+    autoplay = !autoplay;
+    autoplay ? speedSlider.show() : speedSlider.hide();
+    return;
+  }
+  if (inside(mouseX, mouseY, centerX, y, fittedSize)) {
+    centeredView = !centeredView;
+    scrollAmount = targetScroll = 0;
+    return;
+  }
+  if (inside(mouseX, mouseY, sliderX, y, fittedSize)) {
+    sliderVisible = !sliderVisible;
+    return;
+  }
+
+  // slider tab
+  let tabW = 120, tabH = 20, tabX = width / 2 - tabW / 2, tabY = height - tabH;
+  if (inside(mouseX, mouseY, tabX, tabY, tabW, tabH)) {
+    sliderVisible = !sliderVisible;
+    return;
+  }
+
+if (
+  mouseY > 150 &&
+  mouseY < height - sliderAnim * sliderHeight - 40 &&
+  mouseX > 60 && mouseX < width - 60
+) {
+    dragging = true;
+    updateDragAmt(mouseX);
+  }
+
+  if (sliderVisible && mouseY > height - sliderAnim * sliderHeight) {
+    isDraggingSlider = true;
+    lastDragX = mouseX;
+  }
+}
+
+function inside(mx, my, x, y, w, h = w) {
+  return mx > x && mx < x + w && my > y && my < y + h;
+}
+
+function mouseDragged() {
+  if (dragging) updateDragAmt(mouseX);
+  if (isDraggingSlider) {
+    let dx = mouseX - lastDragX;
+    sliderOffset += dx;
+    lastDragX = mouseX;
+  }
+}
+
+function mouseReleased() {
+  if (dragging) {
+    dragging = false;
+    targetScroll = constrain(round(scrollAmount), 0, numImages - 1);
+  }
+  if (isDraggingSlider) isDraggingSlider = false;
+}
+
+function updateDragAmt(x) {
+  dragAmt = constrain(x / width, 0, 1);
+}
+
+function mouseWheel(event) {
+  if (!dragging && !autoplay) {
+    targetScroll += event.delta * 0.01;
+    targetScroll = constrain(targetScroll, 0, numImages - 1);
+  }
+}
+
+function keyPressed() {
+  if (key === "c" || key === "C") centeredView = !centeredView;
+  if (keyCode === 122) {
+    let fsEl = document.documentElement;
+    document.fullscreenElement ? document.exitFullscreen() : fsEl.requestFullscreen();
+    return false;
+  }
+}
+
+function touchStarted() { mousePressed(); return false; }
+function touchMoved() { mouseDragged(); return false; }
+function touchEnded() { mouseReleased(); return false; }

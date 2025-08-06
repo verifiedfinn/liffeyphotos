@@ -17,19 +17,20 @@ let dragDistance = 0;
 let canvas;
 
 function isMobileLayout() {
-  return width < 600;
+   return /Mobi|Android/i.test(navigator.userAgent);
 }
 
 function preload() {
-  // Only load JSON — do NOT preload images
+  // Only load the JSON file, NOT the images themselves
   loadJSON("images.json", (data) => {
     allImageURLs = data;
     imageOrder = data.normal.slice();
 
+    // Just prep the arrays — don’t load any images yet
     images = new Array(data.normal.length);
     centeredImages = new Array(data.centered.length);
 
-    loading = false; // ✅ Tell draw() it's ready
+    loading = false;
   });
 }
 
@@ -103,6 +104,7 @@ function positionSpeedSlider() {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   positionSpeedSlider();
+   showArrows = isMobileLayout();
 }
 
 function startSketch() {
@@ -133,7 +135,7 @@ function getActiveImages() {
   let currentIndex = Math.floor(scrollAmount);
   let nextIndex = Math.min(currentIndex + 1, urls.length - 1);
 
-  // Aggressive cleanup
+  // Clean up unused images
   for (let i = 0; i < list.length; i++) {
     if (i !== currentIndex && i !== nextIndex && list[i]) {
       if (list[i].canvas) list[i].canvas = null;
@@ -141,7 +143,7 @@ function getActiveImages() {
     }
   }
 
-  // Lazy load only 2 images
+  // Load only the current and next images
   if (!list[currentIndex] && urls[currentIndex]) {
     list[currentIndex] = loadImage(urls[currentIndex]);
   }

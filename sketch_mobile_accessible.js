@@ -21,23 +21,17 @@ function isMobileLayout() {
 }
 
 function preload() {
+  // Only load JSON — do NOT preload images
   loadJSON("images.json", (data) => {
     allImageURLs = data;
     imageOrder = data.normal.slice();
 
-    let allURLs = [...data.normal, ...data.centered];
-    let seen = new Set(allURLs);
-    let totalToLoad = seen.size, loadedSoFar = 0;
-
     images = new Array(data.normal.length);
     centeredImages = new Array(data.centered.length);
 
-    data.normal.forEach((url, i) => {
-      loadImage(url, (img) => {
-        images[i] = img;
-        if (++loadedSoFar === totalToLoad) loading = false;
-      });
-    });
+    loading = false; // ✅ Tell draw() it's ready
+  });
+}
 
     data.centered.forEach((url, i) => {
       loadImage(url, (img) => {
@@ -45,8 +39,6 @@ function preload() {
         if (++loadedSoFar === totalToLoad) loading = false;
       });
     });
-  });
-}
 
 function setupOverlay() {
   overlayDiv = createDiv('<div style="color:white; font-family: Helvetica; font-size: 24px;">Tap to Begin</div>');
@@ -141,19 +133,18 @@ function getActiveImages() {
   let currentIndex = Math.floor(scrollAmount);
   let nextIndex = Math.min(currentIndex + 1, urls.length - 1);
 
-  // Cleanup: aggressively free unused images
+  // Aggressive cleanup
   for (let i = 0; i < list.length; i++) {
     if (i !== currentIndex && i !== nextIndex && list[i]) {
-      if (list[i].canvas) list[i].canvas = null; // release WebGL buffer
-      list[i] = null; // allow GC to free memory
+      if (list[i].canvas) list[i].canvas = null;
+      list[i] = null;
     }
   }
 
-  // Lazy load current and next image
+  // Lazy load only 2 images
   if (!list[currentIndex] && urls[currentIndex]) {
     list[currentIndex] = loadImage(urls[currentIndex]);
   }
-
   if (!list[nextIndex] && urls[nextIndex]) {
     list[nextIndex] = loadImage(urls[nextIndex]);
   }
@@ -519,7 +510,3 @@ function touchMoved() {
 }
 
 function touchEnded() { mouseReleased(); return false; }
-
-
-function touchEnded() { mouseReleased(); return false; }
-

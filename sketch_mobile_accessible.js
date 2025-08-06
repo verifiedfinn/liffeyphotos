@@ -67,7 +67,6 @@ function setup() {
   setupOverlay();
   canvas = createCanvas(windowWidth, windowHeight);
   canvas.position(0, 0).style('z-index', '10');
-  canvas.elt.style.pointerEvents = 'none';
 
   createSpeedSlider(); // ✅ Move it here so it's always defined
   speedSlider.hide();  // ✅ Ensure it's hidden at start
@@ -82,12 +81,19 @@ function createSpeedSlider() {
   speedSlider = createSlider(0.1, 3, autoplaySpeed, 0.1);
   if (!speedSlider || !speedSlider.elt || !speedSlider.style) return;
 
-  speedSlider.input(() => autoplaySpeed = speedSlider.value());
+  speedSlider.input(() => {
+    autoplaySpeed = speedSlider.value();
+    console.log("Speed changed to:", autoplaySpeed);
+  });
 
   speedSlider.style("width", "120px");
-  speedSlider.style("z-index", "1000");
-  speedSlider.style("position", "absolute");
+  speedSlider.style("height", "20px");
+  speedSlider.style("z-index", "1001");
+  speedSlider.style("position", "fixed");
   speedSlider.style("display", "none");
+  speedSlider.style("pointer-events", "auto");
+  speedSlider.style("background", "rgba(255,255,255,0.8)");
+  speedSlider.style("border-radius", "4px");
 
   document.body.appendChild(speedSlider.elt);
 }
@@ -132,11 +138,18 @@ function getActiveImages() {
   let list = centeredView ? centeredImages : images;
   let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
 
-  for (let i = 0; i < list.length; i++) {
-    if (!list[i]) {
-      list[i] = loadImage(urls[i]);
-      break;
-    }
+  // Only check ONCE, not every frame
+  let currentIndex = Math.floor(scrollAmount);
+  let nextIndex = currentIndex + 1;
+  
+  // Load current image if not loaded
+  if (!list[currentIndex] && currentIndex < urls.length) {
+    list[currentIndex] = loadImage(urls[currentIndex]);
+  }
+  
+  // Load next image if not loaded  
+  if (!list[nextIndex] && nextIndex < urls.length) {
+    list[nextIndex] = loadImage(urls[nextIndex]);
   }
 
   return list;
@@ -207,10 +220,8 @@ if (abs(scrollAmount - targetScroll) > 0.001) {
 if (autoplay && speedSlider) {
   speedSlider.show();
   positionSpeedSlider();
-  canvas.elt.style.pointerEvents = 'none';
 } else if (speedSlider) {
   speedSlider.hide();
-  canvas.elt.style.pointerEvents = 'auto';
 }
 }
 
@@ -322,15 +333,29 @@ function drawButton(x, y, size, symbol, label, active, onClick) {
 }
 
 function mousePressed() {
+  // FIRST: Check if clicking on speed slider - if so, do NOTHING
+  if (speedSlider && speedSlider.elt && autoplay) {
+    let rect = speedSlider.elt.getBoundingClientRect();
+    if (mouseX >= rect.left && mouseX <= rect.right && 
+        mouseY >= rect.top && mouseY <= rect.bottom) {
+      return false; // Stop p5.js from handling this event
+    }
+  }
+
   dragDistance = 0;
-  let fittedSize = 32, gap = 10, startX = 10, y = 10;
+  let fittedSize = 32, gap = 10, startX = 10, y = 20;
   let arrowX = startX, playX = arrowX + fittedSize + gap;
   let centerX = playX + fittedSize + gap, sliderX = centerX + fittedSize + gap;
 
   if (inside(mouseX, mouseY, arrowX, y, fittedSize)) return showArrows = !showArrows;
   if (inside(mouseX, mouseY, playX, y, fittedSize)) {
     autoplay = !autoplay;
-    autoplay ? speedSlider.show() : speedSlider.hide();
+    if (autoplay) {
+      speedSlider.show();
+      positionSpeedSlider();
+    } else {
+      speedSlider.hide();
+    }
     return;
   }
   if (inside(mouseX, mouseY, centerX, y, fittedSize)) {
@@ -351,31 +376,32 @@ function mousePressed() {
   }
 
   let arrowZoneW = 80;
-if (showArrows && mouseX < arrowZoneW) {
-  suppressDrag = true;
-  targetScroll = max(0, round(scrollAmount) - 1);
-  return;
-}
-if (showArrows && mouseX > width - arrowZoneW) {
-  suppressDrag = true;
-  targetScroll = min(numImages - 1, round(scrollAmount) + 1);
-  return;
-}
+  if (showArrows && mouseX < arrowZoneW) {
+    suppressDrag = true;
+    targetScroll = max(0, round(scrollAmount) - 1);
+    return;
+  }
+  if (showArrows && mouseX > width - arrowZoneW) {
+    suppressDrag = true;
+    targetScroll = min(numImages - 1, round(scrollAmount) + 1);
+    return;
+  }
 
-else if (
-  !suppressDrag &&
-  mouseY > 100 &&
-  mouseY < height - sliderAnim * sliderHeight - 40 &&
-  mouseX > 60 && mouseX < width - 60
-) {
-  dragging = true;
-  updateDragAmt(mouseX);
-}
+  else if (
+    !suppressDrag &&
+    mouseY > 100 &&
+    mouseY < height - sliderAnim * sliderHeight - 40 &&
+    mouseX > 60 && mouseX < width - 60
+  ) {
+    dragging = true;
+    updateDragAmt(mouseX);
+  }
+  
   if (
-  sliderVisible &&
-  mouseY > height - sliderAnim * sliderHeight &&
-  dragDistance < 10
-) {
+    sliderVisible &&
+    mouseY > height - sliderAnim * sliderHeight &&
+    dragDistance < 10
+  ) {
     isDraggingSlider = true;
     lastDragX = mouseX;
   }
@@ -454,6 +480,37 @@ function keyPressed() {
   }
 }
 
-function touchStarted() { mousePressed(); return false; }
-function touchMoved() { mouseDragged(); return false; }
+function touchStarted() { 
+  // Check if touching the speed slider area
+  if (speedSlider && speedSlider.elt && autoplay) {
+    let rect = speedSlider.elt.getBoundingClientRect();
+    if (touches.length > 0) {
+      let touch = touches[0];
+      if (touch.x >= rect.left && touch.x <= rect.right &&
+          touch.y >= rect.top && touch.y <= rect.bottom) {
+        return true; // Allow default touch behavior for slider
+      }
+    }
+  }
+  mousePressed(); 
+  return false; 
+}
+
+function touchMoved() { 
+  // Check if touching the speed slider area
+  if (speedSlider && speedSlider.elt && autoplay) {
+    let rect = speedSlider.elt.getBoundingClientRect();
+    if (touches.length > 0) {
+      let touch = touches[0];
+      if (touch.x >= rect.left && touch.x <= rect.right &&
+          touch.y >= rect.top && touch.y <= rect.bottom) {
+        return true; // Allow default touch behavior for slider
+      }
+    }
+  }
+  mouseDragged(); 
+  return false; 
+}
+
 function touchEnded() { mouseReleased(); return false; }
+

@@ -21,18 +21,23 @@ function isMobileLayout() {
 }
 
 function preload() {
-  // Only load the JSON file, NOT the images themselves
   loadJSON("images.json", (data) => {
     allImageURLs = data;
     imageOrder = data.normal.slice();
 
-    // Just prep the arrays — don’t load any images yet
+    let allURLs = [...data.normal, ...data.centered];
+    let seen = new Set(allURLs);
+    let totalToLoad = seen.size, loadedSoFar = 0;
+
     images = new Array(data.normal.length);
     centeredImages = new Array(data.centered.length);
 
-    loading = false;
-  });
-}
+    data.normal.forEach((url, i) => {
+      loadImage(url, (img) => {
+        images[i] = img;
+        if (++loadedSoFar === totalToLoad) loading = false;
+      });
+    });
 
     data.centered.forEach((url, i) => {
       loadImage(url, (img) => {
@@ -40,6 +45,8 @@ function preload() {
         if (++loadedSoFar === totalToLoad) loading = false;
       });
     });
+  });
+}
 
 function setupOverlay() {
   overlayDiv = createDiv('<div style="color:white; font-family: Helvetica; font-size: 24px;">Tap to Begin</div>');
@@ -104,7 +111,6 @@ function positionSpeedSlider() {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   positionSpeedSlider();
-   showArrows = isMobileLayout();
 }
 
 function startSketch() {
@@ -132,22 +138,17 @@ function getActiveImages() {
   let list = centeredView ? centeredImages : images;
   let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
 
+  // Only check ONCE, not every frame
   let currentIndex = Math.floor(scrollAmount);
-  let nextIndex = Math.min(currentIndex + 1, urls.length - 1);
-
-  // Clean up unused images
-  for (let i = 0; i < list.length; i++) {
-    if (i !== currentIndex && i !== nextIndex && list[i]) {
-      if (list[i].canvas) list[i].canvas = null;
-      list[i] = null;
-    }
-  }
-
-  // Load only the current and next images
-  if (!list[currentIndex] && urls[currentIndex]) {
+  let nextIndex = currentIndex + 1;
+  
+  // Load current image if not loaded
+  if (!list[currentIndex] && currentIndex < urls.length) {
     list[currentIndex] = loadImage(urls[currentIndex]);
   }
-  if (!list[nextIndex] && urls[nextIndex]) {
+  
+  // Load next image if not loaded  
+  if (!list[nextIndex] && nextIndex < urls.length) {
     list[nextIndex] = loadImage(urls[nextIndex]);
   }
 
@@ -512,4 +513,5 @@ function touchMoved() {
 }
 
 function touchEnded() { mouseReleased(); return false; }
+
 

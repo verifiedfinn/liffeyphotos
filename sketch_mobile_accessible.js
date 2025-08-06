@@ -14,6 +14,7 @@ let speedSlider, autoplaySpeed = 1;
 let overlayDiv, imageOrder = [];
 let suppressDrag = false;
 let dragDistance = 0;
+let canvas;
 
 function isMobileLayout() {
   return width < 600;
@@ -64,24 +65,41 @@ function setupOverlay() {
 
 function setup() {
   setupOverlay();
-  createCanvas(windowWidth, windowHeight).position(0, 0).style('z-index', '10');
+  canvas = createCanvas(windowWidth, windowHeight);
+  canvas.position(0, 0).style('z-index', '10');
+  canvas.elt.style.pointerEvents = 'none';
+
+  createSpeedSlider(); // ✅ Move it here so it's always defined
+  speedSlider.hide();  // ✅ Ensure it's hidden at start
+
   showArrows = isMobileLayout();
   background(0);
   imageMode(CENTER);
   textFont("Helvetica");
-  createSpeedSlider();
 }
 
 function createSpeedSlider() {
-  speedSlider = createSlider(0.1, 3, 1, 0.1);
-  speedSlider.style("width", "120px");
+  speedSlider = createSlider(0.1, 3, autoplaySpeed, 0.1);
+  if (!speedSlider || !speedSlider.elt || !speedSlider.style) return;
+
   speedSlider.input(() => autoplaySpeed = speedSlider.value());
-  speedSlider.hide();
-  positionSpeedSlider();
+
+  speedSlider.style("width", "120px");
+  speedSlider.style("z-index", "1000");
+  speedSlider.style("position", "absolute");
+  speedSlider.style("display", "none");
+
+  document.body.appendChild(speedSlider.elt);
 }
 
 function positionSpeedSlider() {
-  speedSlider.position(10, 60);
+  if (!speedSlider) return;
+
+  let sliderX = 10;
+  let sliderY = 60;
+
+  speedSlider.style('left', sliderX + 'px');
+  speedSlider.style('top', sliderY + 'px');
 }
 
 function windowResized() {
@@ -126,9 +144,6 @@ function getActiveImages() {
 
 function draw() {
 if (!sketchStarted) {
-  background(0);
-  fill(255); textAlign(CENTER, CENTER); textSize(24);
-  text('Tap to begin', width / 2, height / 2);
   speedSlider.hide();  // Always hide if not started
   return;
 }
@@ -148,7 +163,12 @@ if (!sketchStarted) {
     if (targetScroll >= numImages - 1) targetScroll = 0;
   }
 
-  scrollAmount = lerp(scrollAmount, targetScroll, dragging ? 0.2 : 0.1);
+  let smoothing = dragging ? 0.2 : 0.1;
+if (abs(scrollAmount - targetScroll) > 0.001) {
+  scrollAmount = lerp(scrollAmount, targetScroll, smoothing);
+} else {
+  scrollAmount = targetScroll;
+}
   sliderAnim = lerp(sliderAnim, sliderVisible ? 1 : 0, 0.1);
 
   let indexA = floor(scrollAmount), indexB = min(indexA + 1, numImages - 1);
@@ -184,11 +204,13 @@ if (!sketchStarted) {
     textAlign(RIGHT, CENTER); text("❯", width - 20, height / 2);
   }
 
-  if (autoplay) {
+if (autoplay && speedSlider) {
   speedSlider.show();
   positionSpeedSlider();
-} else {
+  canvas.elt.style.pointerEvents = 'none';
+} else if (speedSlider) {
   speedSlider.hide();
+  canvas.elt.style.pointerEvents = 'auto';
 }
 }
 
@@ -435,4 +457,3 @@ function keyPressed() {
 function touchStarted() { mousePressed(); return false; }
 function touchMoved() { mouseDragged(); return false; }
 function touchEnded() { mouseReleased(); return false; }
-

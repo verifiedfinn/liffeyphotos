@@ -15,6 +15,8 @@ let overlayDiv, imageOrder = [];
 let suppressDrag = false;
 let dragDistance = 0;
 let canvas;
+let lastImageIndex = -1;
+let lastWipeDirection = 1;
 
 function isMobileLayout() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -101,8 +103,8 @@ function createSpeedSlider() {
 function positionSpeedSlider() {
   if (!speedSlider) return;
 
-  let sliderX = 10;
-  let sliderY = 60;
+  let sliderX = windowWidth - 140; // move to top right
+  let sliderY = 20;                // top padding
 
   speedSlider.style('left', sliderX + 'px');
   speedSlider.style('top', sliderY + 'px');
@@ -151,8 +153,18 @@ function getActiveImages() {
   if (!list[nextIndex] && nextIndex < urls.length) {
     list[nextIndex] = loadImage(urls[nextIndex]);
   }
-
+  manageImageMemory(list, currentIndex);
   return list;
+}
+
+function manageImageMemory(list, currentIndex) {
+  for (let i = 0; i < list.length; i++) {
+    if (i < currentIndex - 2 || i > currentIndex + 2) {
+      if (list[i]) {
+        list[i] = null; // allow garbage collection
+      }
+    }
+  }
 }
 
 function draw() {
@@ -187,21 +199,56 @@ if (abs(scrollAmount - targetScroll) > 0.001) {
   let indexA = floor(scrollAmount), indexB = min(indexA + 1, numImages - 1);
   let lerpAmt = dragging ? dragAmt : scrollAmount - indexA;
   let imgA = activeImages[indexA], imgB = activeImages[indexB];
+  let currentIndex = round(scrollAmount);
+if (currentIndex !== lastImageIndex) {
+  lastWipeDirection = scrollAmount - lastImageIndex > 0 ? 1 : -1;
+  lastImageIndex = currentIndex;
+}
 
-  if (imgA && imgB) {
-    drawImageFitted(imgA);
-    push();
-    translate(width / 2, height / 2);
-    let fittedSize = getFittedSize(imgB);
-    copy(imgB, 0, 0, int(imgB.width * lerpAmt), imgB.height,
-         -fittedSize.w / 2, -fittedSize.h / 2, int(fittedSize.w * lerpAmt), fittedSize.h);
-    pop();
+if (imgA) {
+  drawImageFitted(imgA);
 
-    let wipeX = (width / 2 - fittedSize.w / 2) + fittedSize.w * lerpAmt;
-    stroke(255); strokeWeight(1);
-    line(wipeX, (height - fittedSize.h) / 2, wipeX, (height + fittedSize.h) / 2);
-    noStroke(); fill(255); ellipse(wipeX, height / 2, 8, 8);
+if (imgA && imgB) {
+  drawImageFitted(imgA);
+
+  let blendAmt = constrain(lerpAmt, 0, 1);
+  let fittedSize = getFittedSize(imgB);
+
+  push();
+  translate(width / 2, height / 2);
+  imageMode(CENTER);
+
+  if (lastWipeDirection > 0) {
+    // Left to right
+    copy(
+      imgB,
+      0, 0, int(imgB.width * blendAmt), imgB.height,
+      -fittedSize.w / 2, -fittedSize.h / 2,
+      int(fittedSize.w * blendAmt), fittedSize.h
+    );
+  } else {
+    // Right to left
+    let srcW = int(imgB.width * blendAmt);
+    let dstW = int(fittedSize.w * blendAmt);
+
+    copy(
+      imgB,
+      imgB.width - srcW, 0, srcW, imgB.height, // source: right side
+      -fittedSize.w / 2 + (fittedSize.w - dstW), -fittedSize.h / 2, // dest: right side
+      dstW, fittedSize.h
+    );
   }
+
+  pop();
+
+  // Wipe line
+  let baseX = (width / 2 - fittedSize.w / 2);
+  let wipeX = baseX + fittedSize.w * (lastWipeDirection > 0 ? blendAmt : 1 - blendAmt);
+  stroke(255); strokeWeight(1);
+  line(wipeX, (height - fittedSize.h) / 2, wipeX, (height + fittedSize.h) / 2);
+  noStroke(); fill(255); ellipse(wipeX, height / 2, 8, 8);
+}
+}
 
   drawSlider(activeImages);
   drawSliderTab();
@@ -261,25 +308,58 @@ function autoScrollThumbBar() {
 }
 
 function drawSlider(imgList) {
-  if (sliderAnim > 0.01) {
-    noStroke(); fill(0, 230);
-    rect(0, height - sliderAnim * sliderHeight, width, sliderAnim * sliderHeight);
+  if (sliderAnim < 0.01) return;
 
-    thumbWidth = min(60, width / 8);
-    let margin = 10, x = margin + sliderOffset;
-    for (let i = 0; i < imgList.length; i++) {
-      let y = height - sliderAnim * sliderHeight + 10;
-      let img = imgList[i];
-      let thumbH = thumbWidth * (img.height / img.width);
-      image(img, x + thumbWidth / 2, y + thumbH / 2, thumbWidth, thumbH);
-      if (i === round(scrollAmount)) {
-        stroke(255); strokeWeight(2); noFill();
-        rect(x - 2, y - 2, thumbWidth + 4, thumbH + 4, 6);
-      }
-      x += thumbWidth + margin;
+  noStroke();
+  fill(0, 230);
+  rect(0, height - sliderAnim * sliderHeight, width, sliderAnim * sliderHeight);
+
+  thumbWidth = min(60, width / 8);
+  let margin = 10;
+  let y = height - sliderAnim * sliderHeight + 10;
+
+  let centerIndex = round(scrollAmount);
+  let range = 1; // one before and one after = 3 total
+  let indices = [];
+
+  // Gather 3 indices: left, center, right
+  for (let i = centerIndex - range; i <= centerIndex + range; i++) {
+    if (i >= 0 && i < imgList.length) {
+      indices.push(i);
     }
   }
+
+  // Check that center image is fully loaded before rendering
+  if (!imgList[centerIndex]) return; // Wait until center is loaded
+
+  // Compute total width and starting x so it’s centered
+  let visibleThumbs = indices.length;
+  let totalWidth = visibleThumbs * (thumbWidth + margin) - margin;
+  let x = (width - totalWidth) / 2;
+
+  for (let idx of indices) {
+    let img = imgList[idx];
+    if (!img) {
+      x += thumbWidth + margin;
+      continue;
+    }
+
+    let thumbH = thumbWidth * (img.height / img.width);
+    image(img, x + thumbWidth / 2, y + thumbH / 2, thumbWidth, thumbH);
+
+    if (idx === centerIndex) {
+      stroke(255);
+      strokeWeight(2);
+      noFill();
+      rect(x - 2, y - 2, thumbWidth + 4, thumbH + 4, 6);
+    }
+
+    x += thumbWidth + margin;
+  }
 }
+
+
+
 
 function drawSliderTab() {
   let tabW = 120, tabH = 20, tabX = width / 2 - tabW / 2;
@@ -305,17 +385,29 @@ function drawBottomButtons() {
   drawButton(arrowX, y, fittedSize, "⇄", "Arrows", showArrows, () => showArrows = !showArrows);
 
   let playX = arrowX + fittedSize + gap;
-  drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () => {
-    autoplay = !autoplay;
-    autoplay ? speedSlider.show() : speedSlider.hide();
+drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () => {
+  autoplay = !autoplay;
+  if (autoplay) {
+    targetScroll = scrollAmount;  // 🩹 Fix white line jump
+    speedSlider.show();
     positionSpeedSlider();
-  });
+  } else {
+    speedSlider.hide();
+  }
+});
 
-  let centerX = playX + fittedSize + gap;
-  drawButton(centerX, y, fittedSize, "C", "Centered", centeredView, () => {
-    centeredView = !centeredView;
-    scrollAmount = targetScroll = 0;
-  });
+let centerX = playX + fittedSize + gap;
+drawButton(centerX, y, fittedSize, "C", "Centered", centeredView, () => {
+  let oldIndex = round(scrollAmount);
+  centeredView = !centeredView;
+
+  let newList = centeredView ? centeredImages : images;
+  let newURLs = centeredView ? allImageURLs.centered : allImageURLs.normal;
+  let newMax = newList.length || newURLs.length;
+  let clampedIndex = constrain(oldIndex, 0, newMax - 1);
+
+  scrollAmount = targetScroll = clampedIndex;
+});
 
   let sliderX = centerX + fittedSize + gap;
   drawButton(sliderX, y, fittedSize, "⇵", "Slider", sliderVisible, () => {
@@ -348,19 +440,28 @@ function mousePressed() {
   let centerX = playX + fittedSize + gap, sliderX = centerX + fittedSize + gap;
 
   if (inside(mouseX, mouseY, arrowX, y, fittedSize)) return showArrows = !showArrows;
-  if (inside(mouseX, mouseY, playX, y, fittedSize)) {
-    autoplay = !autoplay;
-    if (autoplay) {
-      speedSlider.show();
-      positionSpeedSlider();
-    } else {
-      speedSlider.hide();
-    }
-    return;
+if (inside(mouseX, mouseY, playX, y, fittedSize)) {
+  autoplay = !autoplay;
+  if (autoplay) {
+    targetScroll = scrollAmount;  // 🩹 Fix white line jump
+    speedSlider.show();
+    positionSpeedSlider();
+  } else {
+    speedSlider.hide();
   }
+  return;
+}
   if (inside(mouseX, mouseY, centerX, y, fittedSize)) {
-    centeredView = !centeredView;
-    scrollAmount = targetScroll = 0;
+    let oldIndex = round(scrollAmount);
+centeredView = !centeredView;
+
+let newList = centeredView ? centeredImages : images;
+let newURLs = centeredView ? allImageURLs.centered : allImageURLs.normal;
+
+let newMax = newList.length || newURLs.length;
+let clampedIndex = constrain(oldIndex, 0, newMax - 1);
+
+scrollAmount = targetScroll = clampedIndex;
     return;
   }
   if (inside(mouseX, mouseY, sliderX, y, fittedSize)) {

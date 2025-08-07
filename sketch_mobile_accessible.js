@@ -146,20 +146,26 @@ function getActiveImages() {
   let list = centeredView ? centeredImages : images;
   let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
 
-  // Only check ONCE, not every frame
+  if (!urls || urls.length === 0) return list;
+
   let currentIndex = Math.floor(scrollAmount);
-  let nextIndex = currentIndex + 1;
-  
-  // Load current image if not loaded
-  if (!list[currentIndex] && currentIndex < urls.length) {
-    list[currentIndex] = loadImage(urls[currentIndex]);
+
+  // Clean up old images
+  cleanupDistantImages(currentIndex);
+
+  // ❌ You're probably only doing this:
+  // loadImageAtIndex(currentIndex, urls, list);
+  // loadImageAtIndex(currentIndex + 1, urls, list);
+
+  // ✅ INSTEAD, DO THIS:
+  if (currentIndex > 0) {
+    loadImageAtIndex(currentIndex - 1, urls, list);
   }
-  
-  // Load next image if not loaded  
-  if (!list[nextIndex] && nextIndex < urls.length) {
-    list[nextIndex] = loadImage(urls[nextIndex]);
+  loadImageAtIndex(currentIndex, urls, list);
+  if (currentIndex + 1 < urls.length) {
+    loadImageAtIndex(currentIndex + 1, urls, list);
   }
-  manageImageMemory(list, currentIndex);
+
   return list;
 }
 

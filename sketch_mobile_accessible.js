@@ -17,6 +17,10 @@ let dragDistance = 0;
 let canvas;
 let lastImageIndex = -1;
 let lastWipeDirection = 1;
+let loadedImages = {};
+const MAX_LOADED_IMAGES = 3; // Very strict limit for mobile
+let frameCount = 0; // Add this if you don't have it
+
 
 function isMobileLayout() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -26,28 +30,30 @@ function preload() {
   loadJSON("images.json", (data) => {
     allImageURLs = data;
     imageOrder = data.normal.slice();
-
-    let allURLs = [...data.normal, ...data.centered];
-    let seen = new Set(allURLs);
-    let totalToLoad = seen.size, loadedSoFar = 0;
-
-    images = new Array(data.normal.length);
-    centeredImages = new Array(data.centered.length);
-
-    data.normal.forEach((url, i) => {
-      loadImage(url, (img) => {
-        images[i] = img;
-        if (++loadedSoFar === totalToLoad) loading = false;
-      });
-    });
-
-    data.centered.forEach((url, i) => {
-      loadImage(url, (img) => {
-        centeredImages[i] = img;
-        if (++loadedSoFar === totalToLoad) loading = false;
-      });
-    });
+    
+    // 🚫 DON'T LOAD ALL IMAGES! Just set up empty arrays
+    images = new Array(data.normal.length).fill(null);
+    centeredImages = new Array(data.centered.length).fill(null);
+    
+    loading = false; // Skip loading screen since we're not preloading
+    console.log(`Loaded ${data.normal.length} image URLs (not the actual images)`);
   });
+}
+
+function getImage(index) {
+  if (!loadedImages[index] && allImageURLs.normal[index]) {
+    loadImage(allImageURLs.normal[index], img => {
+      loadedImages[index] = img;
+    });
+
+    // Cleanup distant images to save memory
+    for (let key in loadedImages) {
+      if (Math.abs(index - key) > 2) {
+        delete loadedImages[key];
+      }
+    }
+  }
+  return loadedImages[index];
 }
 
 function setupOverlay() {
@@ -615,23 +621,28 @@ function touchMoved() {
 
 function touchEnded() { mouseReleased(); return false; }
 
-let loadedImages = {};
+function getImage(index, useCentered = false) {
+  if (!allImageURLs) return null;
 
-function getImage(index, callback) {
-  if (loadedImages[index]) {
-    callback(loadedImages[index]);
-  } else if (imageList[index]) {
-    loadImage(imageList[index].path, img => {
-      loadedImages[index] = img;
-      callback(img);
+  let list = useCentered ? allImageURLs.centered : allImageURLs.normal;
+  if (!list || !list[index]) return null;
 
-      // 🧹 Clean up all others outside ±2 range
-      for (let key in loadedImages) {
-        let k = int(key);
-        if (Math.abs(k - index) > 2) {
+  let key = (useCentered ? "c" : "n") + index;
+
+  if (!loadedImages[key]) {
+    loadImage(list[index], (img) => {
+      loadedImages[key] = img;
+
+      // Remove images that are too far from current index
+      for (let k in loadedImages) {
+        let isC = k.startsWith("c");
+        let i = parseInt(k.slice(1));
+        if (isC === useCentered && Math.abs(i - index) > 2) {
           delete loadedImages[k];
         }
       }
     });
   }
+
+  return loadedImages[key] || null;
 }

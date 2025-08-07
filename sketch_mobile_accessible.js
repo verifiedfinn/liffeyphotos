@@ -615,4 +615,23 @@ function touchMoved() {
 
 function touchEnded() { mouseReleased(); return false; }
 
+let loadedImages = {};
 
+function getImage(index, callback) {
+  if (loadedImages[index]) {
+    callback(loadedImages[index]);
+  } else if (imageList[index]) {
+    loadImage(imageList[index].path, img => {
+      loadedImages[index] = img;
+      callback(img);
+
+      // 🧹 Clean up all others outside ±2 range
+      for (let key in loadedImages) {
+        let k = int(key);
+        if (Math.abs(k - index) > 2) {
+          delete loadedImages[k];
+        }
+      }
+    });
+  }
+}

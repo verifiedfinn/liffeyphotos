@@ -17,6 +17,7 @@ let dragDistance = 0;
 let canvas;
 let lastImageIndex = -1;
 let lastWipeDirection = 1;
+let dirLockFrames = 0;
 let loadedImages = {};
 const MAX_LOADED_IMAGES = 3; // Very strict limit for mobile
 let frameCount = 0; // Add this if you don't have it
@@ -48,22 +49,6 @@ function preload() {
     loading = false; // Skip loading screen since we're not preloading
     console.log(`Loaded ${data.normal.length} image URLs (not the actual images)`);
   });
-}
-
-function getImage(index) {
-  if (!loadedImages[index] && allImageURLs.normal[index]) {
-    loadImage(allImageURLs.normal[index], img => {
-      loadedImages[index] = img;
-    });
-
-    // Cleanup distant images to save memory
-    for (let key in loadedImages) {
-      if (Math.abs(index - key) > 2) {
-        delete loadedImages[key];
-      }
-    }
-  }
-  return loadedImages[index];
 }
 
 function setupOverlay() {
@@ -99,6 +84,8 @@ function setup() {
 function createSpeedSlider() {
   speedSlider = createSlider(0.1, 3, autoplaySpeed, 0.1);
   if (!speedSlider || !speedSlider.elt || !speedSlider.style) return;
+  // Give Safari/iOS a real intrinsic size to respect
+speedSlider.size(220, 32);
 
   speedSlider.input(() => {
     autoplaySpeed = speedSlider.value();
@@ -159,6 +146,9 @@ if (!document.getElementById('range-css-patch')) {
   `;
   document.head.appendChild(style);
 }
+speedSlider.elt.style.lineHeight = '32px';
+speedSlider.elt.style.padding = '0';
+speedSlider.elt.style.touchAction = 'manipulation';
 
   document.body.appendChild(speedSlider.elt);
 }
@@ -251,11 +241,15 @@ if (abs(scrollAmount - targetScroll) > 0.001) {
   let indexA = floor(scrollAmount), indexB = min(indexA + 1, numImages - 1);
   let lerpAmt = dragging ? dragAmt : scrollAmount - indexA;
   let imgA = activeImages[indexA], imgB = activeImages[indexB];
-  let currentIndex = round(scrollAmount);
-if (currentIndex !== lastImageIndex) {
-  lastWipeDirection = scrollAmount - lastImageIndex > 0 ? 1 : -1;
-  lastImageIndex = currentIndex;
+let currentIndex = round(scrollAmount);
+
+// --- direction fallback (only if we didn't just set it explicitly) ---
+if (dirLockFrames > 0) {
+  dirLockFrames--;
+} else if (currentIndex !== lastImageIndex) {
+  lastWipeDirection = (scrollAmount - lastImageIndex > 0) ? 1 : -1;
 }
+lastImageIndex = currentIndex;
 
 if (imgA) {
   drawImageFitted(imgA);
@@ -326,6 +320,7 @@ if (imgA && imgB) {
 
 if (autoplay && speedSlider) {
   speedSlider.show();
+  speedSlider.elt.style.display = 'block';
 } else if (speedSlider) {
   speedSlider.hide();
 }
@@ -458,13 +453,14 @@ function drawBottomButtons() {
   let playX = arrowX + fittedSize + gap;
 drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () => {
   autoplay = !autoplay;
-  if (autoplay) {
-    lastWipeDirection = +1; // →
-    targetScroll = scrollAmount;  // 🩹 Fix white line jump
-    speedSlider.show();
-  } else {
-    speedSlider.hide();
-  }
+if (autoplay) {
+  lastWipeDirection = +1; dirLockFrames = 12; // →
+  targetScroll = scrollAmount;  // 🩹 Fix white line jump
+  speedSlider.show();
+  speedSlider.elt.style.display = 'block';
+} else {
+  speedSlider.hide();
+}
 });
 
 let centerX = playX + fittedSize + gap;
@@ -477,8 +473,9 @@ drawButton(centerX, y, fittedSize, "C", "Centered", centeredView, () => {
   let newMax = newList.length || newURLs.length;
   let clampedIndex = constrain(oldIndex, 0, newMax - 1);
 
-  lastWipeDirection = (clampedIndex > round(scrollAmount)) ? +1 : -1;
-  scrollAmount = targetScroll = clampedIndex;
+lastWipeDirection = (clampedIndex > round(scrollAmount)) ? +1 : -1;
+dirLockFrames = 12;
+scrollAmount = targetScroll = clampedIndex;
 });
 
   let sliderX = centerX + fittedSize + gap;
@@ -514,17 +511,18 @@ function mousePressed() {
   if (inside(mouseX, mouseY, arrowX, y, fittedSize)) return showArrows = !showArrows;
 if (inside(mouseX, mouseY, playX, y, fittedSize)) {
   autoplay = !autoplay;
-  if (autoplay) {
-    lastWipeDirection = +1; // →
-    targetScroll = scrollAmount;  // 🩹 Fix white line jump
-    speedSlider.show();
-  } else {
-    speedSlider.hide();
-  }
+if (autoplay) {
+  lastWipeDirection = +1; dirLockFrames = 12; // →
+  targetScroll = scrollAmount;  // 🩹 Fix white line jump
+  speedSlider.show();
+  speedSlider.elt.style.display = 'block';
+} else {
+  speedSlider.hide();
+}
   return;
 }
   if (inside(mouseX, mouseY, centerX, y, fittedSize)) {
-    let oldIndex = round(scrollAmount);
+let oldIndex = round(scrollAmount);
 centeredView = !centeredView;
 
 let newList = centeredView ? centeredImages : images;
@@ -533,8 +531,10 @@ let newURLs = centeredView ? allImageURLs.centered : allImageURLs.normal;
 let newMax = newList.length || newURLs.length;
 let clampedIndex = constrain(oldIndex, 0, newMax - 1);
 
+lastWipeDirection = (clampedIndex > round(scrollAmount)) ? +1 : -1;
+dirLockFrames = 12;
 scrollAmount = targetScroll = clampedIndex;
-    return;
+return;
   }
   if (inside(mouseX, mouseY, sliderX, y, fittedSize)) {
     sliderVisible = !sliderVisible;
@@ -551,13 +551,13 @@ scrollAmount = targetScroll = clampedIndex;
 let arrowZoneW = 80;
 if (showArrows && mouseX < arrowZoneW) {
   suppressDrag = true;
-  lastWipeDirection = -1; // ← wipe right-to-left
+  lastWipeDirection = -1; dirLockFrames = 12; // ←
   targetScroll = max(0, round(scrollAmount) - 1);
   return;
 }
 if (showArrows && mouseX > width - arrowZoneW) {
   suppressDrag = true;
-  lastWipeDirection = +1; // → wipe left-to-right
+  lastWipeDirection = +1; dirLockFrames = 12; // →
   targetScroll = min(numImages - 1, round(scrollAmount) + 1);
   return;
 }
@@ -624,6 +624,7 @@ if (
 
 if (inside(mouseX, mouseY, thumbX, thumbY, thumbW, thumbH)) {
   lastWipeDirection = (i > round(scrollAmount)) ? +1 : -1;
+  dirLockFrames = 12;
   targetScroll = i;
   dragging = false;
   suppressDrag = true;
@@ -744,12 +745,10 @@ function touchMoved() {
     // 📱 SWIPE NAVIGATION: Left/Right swipes
 if (abs(deltaX) > 50) { // Minimum swipe distance
   if (deltaX > 0) {
-    // Swipe RIGHT = NEXT image
-    lastWipeDirection = +1; // →
+    lastWipeDirection = +1; dirLockFrames = 12; // →
     targetScroll = min(numImages - 1, round(scrollAmount) + 1);
   } else {
-    // Swipe LEFT = PREVIOUS image
-    lastWipeDirection = -1; // ←
+    lastWipeDirection = -1; dirLockFrames = 12; // ←
     targetScroll = max(0, round(scrollAmount) - 1);
   }
   lastTouchX = touch.x; // Reset to prevent multiple triggers

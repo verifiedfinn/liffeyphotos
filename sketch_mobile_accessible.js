@@ -85,14 +85,14 @@ function createSpeedSlider() {
   speedSlider = createSlider(0.1, 3, autoplaySpeed, 0.1);
   if (!speedSlider || !speedSlider.elt || !speedSlider.style) return;
   // Give Safari/iOS a real intrinsic size to respect
-speedSlider.size(220, 32);
+speedSlider.size(160, 24);
 
   speedSlider.input(() => {
     autoplaySpeed = speedSlider.value();
   });
 
-  speedSlider.style("width", "140px");
-  speedSlider.style("height", "24px");
+speedSlider.style("width", "160px");
+speedSlider.style("height", "24px");
   speedSlider.style("z-index", "1001");
   speedSlider.style("position", "fixed");
   speedSlider.style("display", "none");
@@ -108,8 +108,8 @@ speedSlider.size(220, 32);
   // Force proper sizing on iOS/Android
 speedSlider.elt.style.appearance = 'none';
 speedSlider.elt.style.webkitAppearance = 'none';
-speedSlider.elt.style.height = '32px';
-speedSlider.elt.style.width  = '200px';  // bump width
+speedSlider.elt.style.height = '24px';
+speedSlider.elt.style.width  = '160px';
 
 // One-time CSS injection for track/thumb
 if (!document.getElementById('range-css-patch')) {
@@ -119,34 +119,34 @@ if (!document.getElementById('range-css-patch')) {
     input[type="range"]{
       -webkit-appearance:none;
       appearance:none;
-      height:32px;
-      width:200px;
+height:24px;
+width:160px;
       background:transparent;
     }
     input[type="range"]::-webkit-slider-runnable-track{
-      height:8px;
+      height:6px;
       border-radius:8px;
       background:rgba(255,255,255,0.6);
     }
      input[type="range"]::-moz-range-track{
-      height:8px;
+      height:6px;
       border-radius:8px;
       background:rgba(255,255,255,0.6);
     }
     input[type="range"]::-webkit-slider-thumb{
       -webkit-appearance:none;
       appearance:none;
-      width:20px; height:20px; border-radius:50%;
+      width:16px; height:16px; margin-top:-5px;
       background:#fff; margin-top:-6px; border:1px solid rgba(0,0,0,0.1);
     }
     input[type="range"]::-moz-range-thumb{
-      width:20px; height:20px; border-radius:50%;
+      width:16px; height:16px; margin-top:-5px;
       background:#fff; border:none;
     }
   `;
   document.head.appendChild(style);
 }
-speedSlider.elt.style.lineHeight = '32px';
+speedSlider.elt.style.lineHeight = '24px';
 speedSlider.elt.style.padding = '0';
 speedSlider.elt.style.touchAction = 'manipulation';
 
@@ -183,19 +183,17 @@ function getActiveImages() {
   let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
 
   // Only check ONCE, not every frame
-  let currentIndex = Math.floor(scrollAmount);
-  let nextIndex = currentIndex + 1;
-  
-  // Load current image if not loaded
-  if (!list[currentIndex] && currentIndex < urls.length) {
-    list[currentIndex] = loadImage(urls[currentIndex]);
-  }
-  
-  // Load next image if not loaded  
-  if (!list[nextIndex] && nextIndex < urls.length) {
-    list[nextIndex] = loadImage(urls[nextIndex]);
-  }
-  manageImageMemory(list, currentIndex);
+let iFloor = Math.floor(scrollAmount);
+let iCeil  = Math.min(iFloor + 1, urls.length - 1);
+
+// Load floor
+if (!list[iFloor] && iFloor >= 0 && iFloor < urls.length) {
+  list[iFloor] = loadImage(urls[iFloor]);
+}
+// Load ceil
+if (!list[iCeil] && iCeil >= 0 && iCeil < urls.length) {
+  list[iCeil] = loadImage(urls[iCeil]);
+}ageImageMemory(list, currentIndex);
   return list;
 }
 
@@ -238,9 +236,27 @@ if (abs(scrollAmount - targetScroll) > 0.001) {
 }
   sliderAnim = lerp(sliderAnim, sliderVisible ? 1 : 0, 0.1);
 
-  let indexA = floor(scrollAmount), indexB = min(indexA + 1, numImages - 1);
-  let lerpAmt = dragging ? dragAmt : scrollAmount - indexA;
-  let imgA = activeImages[indexA], imgB = activeImages[indexB];
+let indexFloor = floor(scrollAmount);
+let indexCeil = min(indexFloor + 1, numImages - 1);
+let frac = scrollAmount - indexFloor;
+
+// Decide which image is "from" (A) and "to" (B)
+// and a monotonic progress t ∈ [0..1] regardless of direction
+let aIndex, bIndex, t;
+if (lastWipeDirection > 0) {
+  // forward: floor -> ceil
+  aIndex = indexFloor;
+  bIndex = indexCeil;
+  t = dragging ? dragAmt : frac;
+} else {
+  // backward: ceil -> floor
+  aIndex = indexCeil;
+  bIndex = indexFloor;
+  t = dragging ? (1 - dragAmt) : (1 - frac);
+}
+
+let imgA = activeImages[aIndex];
+let imgB = activeImages[bIndex];
 let currentIndex = round(scrollAmount);
 
 // --- direction fallback (only if we didn't just set it explicitly) ---
@@ -258,7 +274,7 @@ if (imgA && imgB) {
   // Draw base A
   drawImageFitted(imgA);
 
-  let blendAmt = constrain(lerpAmt, 0, 1);
+ let blendAmt = constrain(t, 0, 1);
   let fittedB = getFittedSize(imgB);
 
   // Draw B with a clipping rectangle that grows/shrinks

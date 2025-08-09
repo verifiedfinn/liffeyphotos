@@ -118,6 +118,48 @@ function createSpeedSlider() {
   speedSlider.elt.style.right = "calc(env(safe-area-inset-right, 0px) + 12px)";
   speedSlider.elt.style.top   = "calc(env(safe-area-inset-top, 0px) + 12px)";
 
+  // Force proper sizing on iOS/Android
+speedSlider.elt.style.appearance = 'none';
+speedSlider.elt.style.webkitAppearance = 'none';
+speedSlider.elt.style.height = '32px';
+speedSlider.elt.style.width  = '200px';  // bump width
+
+// One-time CSS injection for track/thumb
+if (!document.getElementById('range-css-patch')) {
+  const style = document.createElement('style');
+  style.id = 'range-css-patch';
+  style.textContent = `
+    input[type="range"]{
+      -webkit-appearance:none;
+      appearance:none;
+      height:32px;
+      width:200px;
+      background:transparent;
+    }
+    input[type="range"]::-webkit-slider-runnable-track{
+      height:8px;
+      border-radius:8px;
+      background:rgba(255,255,255,0.6);
+    }
+     input[type="range"]::-moz-range-track{
+      height:8px;
+      border-radius:8px;
+      background:rgba(255,255,255,0.6);
+    }
+    input[type="range"]::-webkit-slider-thumb{
+      -webkit-appearance:none;
+      appearance:none;
+      width:20px; height:20px; border-radius:50%;
+      background:#fff; margin-top:-6px; border:1px solid rgba(0,0,0,0.1);
+    }
+    input[type="range"]::-moz-range-thumb{
+      width:20px; height:20px; border-radius:50%;
+      background:#fff; border:none;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
   document.body.appendChild(speedSlider.elt);
 }
 
@@ -417,6 +459,7 @@ function drawBottomButtons() {
 drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () => {
   autoplay = !autoplay;
   if (autoplay) {
+    lastWipeDirection = +1; // →
     targetScroll = scrollAmount;  // 🩹 Fix white line jump
     speedSlider.show();
   } else {
@@ -434,6 +477,7 @@ drawButton(centerX, y, fittedSize, "C", "Centered", centeredView, () => {
   let newMax = newList.length || newURLs.length;
   let clampedIndex = constrain(oldIndex, 0, newMax - 1);
 
+  lastWipeDirection = (clampedIndex > round(scrollAmount)) ? +1 : -1;
   scrollAmount = targetScroll = clampedIndex;
 });
 
@@ -471,6 +515,7 @@ function mousePressed() {
 if (inside(mouseX, mouseY, playX, y, fittedSize)) {
   autoplay = !autoplay;
   if (autoplay) {
+    lastWipeDirection = +1; // →
     targetScroll = scrollAmount;  // 🩹 Fix white line jump
     speedSlider.show();
   } else {
@@ -503,17 +548,19 @@ scrollAmount = targetScroll = clampedIndex;
     return;
   }
 
-  let arrowZoneW = 80;
-  if (showArrows && mouseX < arrowZoneW) {
-    suppressDrag = true;
-    targetScroll = max(0, round(scrollAmount) - 1);
-    return;
-  }
-  if (showArrows && mouseX > width - arrowZoneW) {
-    suppressDrag = true;
-    targetScroll = min(numImages - 1, round(scrollAmount) + 1);
-    return;
-  }
+let arrowZoneW = 80;
+if (showArrows && mouseX < arrowZoneW) {
+  suppressDrag = true;
+  lastWipeDirection = -1; // ← wipe right-to-left
+  targetScroll = max(0, round(scrollAmount) - 1);
+  return;
+}
+if (showArrows && mouseX > width - arrowZoneW) {
+  suppressDrag = true;
+  lastWipeDirection = +1; // → wipe left-to-right
+  targetScroll = min(numImages - 1, round(scrollAmount) + 1);
+  return;
+}
 
   else if (
     !suppressDrag &&
@@ -575,12 +622,13 @@ if (
     let thumbX = x;
     let thumbY = height - sliderAnim * sliderHeight + 10;
 
-    if (inside(mouseX, mouseY, thumbX, thumbY, thumbW, thumbH)) {
-      targetScroll = i;
-      dragging = false;
-      suppressDrag = true;
-      return;
-    }
+if (inside(mouseX, mouseY, thumbX, thumbY, thumbW, thumbH)) {
+  lastWipeDirection = (i > round(scrollAmount)) ? +1 : -1;
+  targetScroll = i;
+  dragging = false;
+  suppressDrag = true;
+  return;
+}
     x += thumbW + margin;
   }
 }
@@ -694,16 +742,18 @@ function touchMoved() {
     let deltaX = touch.x - lastTouchX;
     
     // 📱 SWIPE NAVIGATION: Left/Right swipes
-    if (abs(deltaX) > 50) { // Minimum swipe distance
-      if (deltaX > 0) {
-        // Swipe RIGHT = go to PREVIOUS image
-        targetScroll = max(0, round(scrollAmount) - 1);
-      } else {
-        // Swipe LEFT = go to NEXT image
-        targetScroll = min(numImages - 1, round(scrollAmount) + 1);
-      }
-      lastTouchX = touch.x; // Reset to prevent multiple triggers
-    }
+if (abs(deltaX) > 50) { // Minimum swipe distance
+  if (deltaX > 0) {
+    // Swipe RIGHT = NEXT image
+    lastWipeDirection = +1; // →
+    targetScroll = min(numImages - 1, round(scrollAmount) + 1);
+  } else {
+    // Swipe LEFT = PREVIOUS image
+    lastWipeDirection = -1; // ←
+    targetScroll = max(0, round(scrollAmount) - 1);
+  }
+  lastTouchX = touch.x; // Reset to prevent multiple triggers
+}
     
   } else if (touches.length === 2 && isZooming) {
     // Two finger zoom

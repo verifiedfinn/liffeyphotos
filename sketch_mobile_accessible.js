@@ -31,6 +31,7 @@ let lastTapTime = 0;
 let tapCount = 0;
 let swipeStartX = 0, swipeStartY = 0;
 
+
 function isMobileLayout() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
@@ -120,19 +121,10 @@ function createSpeedSlider() {
   document.body.appendChild(speedSlider.elt);
 }
 
-function positionSpeedSlider() {
-  if (!speedSlider) return;
-
-  let sliderX = windowWidth - 140; // move to top right
-  let sliderY = 20;                // top padding
-
-  speedSlider.style('left', sliderX + 'px');
-  speedSlider.style('top', sliderY + 'px');
-}
+function positionSpeedSlider() {}
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  positionSpeedSlider();
 }
 
 function startSketch() {
@@ -146,7 +138,6 @@ function startSketch() {
 
     if (autoplay) {
       speedSlider.show();
-      positionSpeedSlider();
     }
   }
 }
@@ -293,7 +284,6 @@ if (imgA && imgB) {
 
 if (autoplay && speedSlider) {
   speedSlider.show();
-  positionSpeedSlider();
 } else if (speedSlider) {
   speedSlider.hide();
 }
@@ -429,7 +419,6 @@ drawButton(playX, y, fittedSize, autoplay ? "■" : "▶", "Play", autoplay, () 
   if (autoplay) {
     targetScroll = scrollAmount;  // 🩹 Fix white line jump
     speedSlider.show();
-    positionSpeedSlider();
   } else {
     speedSlider.hide();
   }
@@ -484,7 +473,6 @@ if (inside(mouseX, mouseY, playX, y, fittedSize)) {
   if (autoplay) {
     targetScroll = scrollAmount;  // 🩹 Fix white line jump
     speedSlider.show();
-    positionSpeedSlider();
   } else {
     speedSlider.hide();
   }
@@ -606,9 +594,15 @@ function updateDragAmt(x) {
 
 function mouseWheel(event) {
   if (!dragging && !autoplay) {
-    targetScroll += event.delta * 0.01;
-    targetScroll = constrain(targetScroll, 0, numImages - 1);
+    const dx = event.deltaX || 0;
+    const dy = event.deltaY || 0;
+    // Only react if the gesture is mostly horizontal
+    if (Math.abs(dx) > Math.abs(dy)) {
+      targetScroll += dx * 0.01;
+      targetScroll = constrain(targetScroll, 0, numImages - 1);
+    }
   }
+  // don't preventDefault; page can still scroll vertically
 }
 
 function keyPressed() {

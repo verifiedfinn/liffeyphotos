@@ -36,7 +36,8 @@ let lastWipeXScreen = NaN;
 let lastBaseXScreen = NaN;
 let lastFittedW = NaN, lastFittedH = NaN;
 let lastPairLeftIndex = 0; // floor index
-let lastBlendAmt = 0; // store t for direction hint
+let lastBlendAmt = 0; // store t for direction hint\
+let dragPairLeft = -1, dragPairRight = -1; // locked pair while dragging
 
 
 function isMobileLayout() {
@@ -126,7 +127,7 @@ if (!document.getElementById('range-css-patch')) {
       -webkit-appearance:none;
       appearance:none;
 height:14px;
-width:7-px;
+width:70px;
       background:transparent;
     }
     input[type="range"]::-webkit-slider-runnable-track{
@@ -243,11 +244,16 @@ if (!sketchStarted) {
     if (targetScroll >= numImages - 1) targetScroll = 0;
   }
 
-  let smoothing = dragging ? 0.2 : 0.1;
-if (abs(scrollAmount - targetScroll) > 0.001) {
-  scrollAmount = lerp(scrollAmount, targetScroll, smoothing);
-} else {
+if (isWipeDragging) {
+  // no smoothing while handle is down
   scrollAmount = targetScroll;
+} else {
+  let smoothing = dragging ? 0.2 : 0.1;
+  if (abs(scrollAmount - targetScroll) > 0.001) {
+    scrollAmount = lerp(scrollAmount, targetScroll, smoothing);
+  } else {
+    scrollAmount = targetScroll;
+  }
 }
   sliderAnim = lerp(sliderAnim, sliderVisible ? 1 : 0, 0.1);
 
@@ -258,16 +264,23 @@ let frac = scrollAmount - indexFloor;
 // Decide which image is "from" (A) and "to" (B)
 // and a monotonic progress t ∈ [0..1] regardless of direction
 let aIndex, bIndex, t;
-if (lastWipeDirection > 0) {
-  // forward: floor -> ceil
-  aIndex = indexFloor;
-  bIndex = indexCeil;
-  t = dragging ? dragAmt : frac;
+
+if (isWipeDragging && dragPairLeft >= 0) {
+  // When scrubbing the handle: always compare the locked pair left→right
+  aIndex = dragPairLeft;
+  bIndex = dragPairRight;
+  t = constrain(scrollAmount - dragPairLeft, 0, 1);
 } else {
-  // backward: ceil -> floor
-  aIndex = indexCeil;
-  bIndex = indexFloor;
-  t = dragging ? (1 - dragAmt) : (1 - frac);
+  // Normal behavior (direction-aware)
+  if (lastWipeDirection > 0) {
+    aIndex = indexFloor;
+    bIndex = indexCeil;
+    t = dragging ? dragAmt : frac;
+  } else {
+    aIndex = indexCeil;
+    bIndex = indexFloor;
+    t = dragging ? (1 - dragAmt) : (1 - frac);
+  }
 }
 
 let imgA = activeImages[aIndex];
@@ -275,12 +288,14 @@ let imgB = activeImages[bIndex];
 let currentIndex = round(scrollAmount);
 
 // --- direction fallback (only if we didn't just set it explicitly) ---
-if (dirLockFrames > 0) {
-  dirLockFrames--;
-} else if (currentIndex !== lastImageIndex) {
-  lastWipeDirection = (scrollAmount - lastImageIndex > 0) ? 1 : -1;
+if (!isWipeDragging) {
+  if (dirLockFrames > 0) {
+    dirLockFrames--;
+  } else if (currentIndex !== lastImageIndex) {
+    lastWipeDirection = (scrollAmount - lastImageIndex > 0) ? 1 : -1;
+  }
+  lastImageIndex = currentIndex;
 }
-lastImageIndex = currentIndex;
 
 if (imgA) {
   drawImageFitted(imgA);
@@ -306,9 +321,11 @@ if (imgA && imgB) {
   const left = -fittedB.w / 2;
   const top  = -fittedB.h / 2;
 
-  let clipW = lastWipeDirection > 0
-    ? fittedB.w * blendAmt           // forward: left → right
-    : fittedB.w * (1 - blendAmt);    // backward: right → left (we clip from left but compute line accordingly)
+const forward = isWipeDragging || lastWipeDirection > 0;
+
+let clipW = forward
+  ? fittedB.w * blendAmt
+  : fittedB.w * (1 - blendAmt);
 
   ctx.save();
   ctx.beginPath();
@@ -335,7 +352,7 @@ if (imgA && imgB) {
 
   // --- screen-space bookkeeping for handle hit/drag ---
 const baseXScreen = width / 2 - fittedB.w / 2;
-const wipeXScreen = lastWipeDirection > 0
+const wipeXScreen = forward
   ? baseXScreen + fittedB.w * blendAmt
   : baseXScreen + fittedB.w * (1 - blendAmt);
 
@@ -595,17 +612,28 @@ return;
     return;
   }
 
-    // ---- Wipe handle grab (screen-space) ----
+  // ---- Wipe handle grab (screen-space) ----
   if (!autoplay && isFinite(lastWipeXScreen) && isFinite(lastBaseXScreen) && isFinite(lastFittedW)) {
     const handleRadius = 18; // px tap target
     const imgTop = (height - lastFittedH) / 2;
     const imgBottom = imgTop + lastFittedH;
 
     if (mouseY >= imgTop && mouseY <= imgBottom && abs(mouseX - lastWipeXScreen) <= handleRadius) {
+      // Lock to the current two-frame pair
+      dragPairLeft = floor(scrollAmount);
+      dragPairRight = min(dragPairLeft + 1, numImages - 1);
+
       isWipeDragging = true;
-      dragging = false; // don't treat as frame drag
+      autoplay = false;
+      lastWipeDirection = +1; // keep it simple while dragging
+      dragging = false;
       suppressDrag = true;
-      dirLockFrames = 12; // hold current direction briefly
+
+      // Freeze smoothing so it feels 1:1
+      targetScroll = scrollAmount;
+
+      // Optional: hold direction logic out of the way
+      dirLockFrames = 12;
       return;
     }
   }
@@ -651,19 +679,17 @@ function inside(mx, my, x, y, w, h = w) {
 
 
 function mouseDragged() {
-    if (isWipeDragging && isFinite(lastBaseXScreen) && isFinite(lastFittedW)) {
-    // Map mouse to t across current pair
+    if (isWipeDragging && dragPairLeft >= 0) {
+    // Map the pointer to a [0..1] t across this specific pair
     let t = (mouseX - lastBaseXScreen) / lastFittedW;
     t = constrain(t, 0, 1);
 
-    // Convert t back to scroll units within the pair
-    targetScroll = lastPairLeftIndex + t;
+    // Drive the scroll only inside the locked pair
+    scrollAmount = targetScroll = dragPairLeft + t;
 
-    // Update direction hint from movement
-    lastWipeDirection = (t >= lastBlendAmt) ? +1 : -1;
-    lastBlendAmt = t;
-
-    return; // don't move slider bar or anything else
+    // Keep direction stable but it won't affect A/B while dragging
+    dirLockFrames = 2;
+    return; // don't do other drags
   }
 
   if (dragging) {
@@ -682,11 +708,12 @@ function mouseReleased() {
     if (isWipeDragging) {
     isWipeDragging = false;
     suppressDrag = false;
-    // Snap to nearest frame when you let go
-    targetScroll = constrain(round(targetScroll), 0, numImages - 1);
+    // Snap to the nearest whole frame on release
+    targetScroll = constrain(round(scrollAmount), 0, numImages - 1);
+    dragPairLeft = dragPairRight = -1;
     return;
   }
-  
+
   if (dragging) {
     dragging = false;
     targetScroll = constrain(round(scrollAmount), 0, numImages - 1);

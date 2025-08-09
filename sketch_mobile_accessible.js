@@ -312,20 +312,22 @@ if (imgA && imgB) {
   imageMode(CENTER);
   image(imgB, 0, 0, fittedB.w, fittedB.h);
   ctx.restore();
-  pop();
 
-  // Draw the wipe line across the exact fitted width on screen
-  const baseX = width / 2 - fittedB.w / 2;
-  const wipeX = lastWipeDirection > 0
-    ? baseX + fittedB.w * blendAmt
-    : baseX + fittedB.w * (1 - blendAmt);
+  // Draw the wipe line IN THE SAME TRANSFORMED SPACE
+  // Local coords: center is (0,0), top-left is (left, top)
+  let wipeLocalX = left + clipW;
 
+  // Keep line thickness roughly constant in screen pixels
   stroke(255);
-  strokeWeight(2);
-  line(wipeX, (height - fittedB.h) / 2, wipeX, (height + fittedB.h) / 2);
+  strokeWeight(2 / max(zoomLevel, 0.001));
+  line(wipeLocalX, top, wipeLocalX, top + fittedB.h);
+
+  // Little handle dot at the center line, also size-compensated
   noStroke();
   fill(255);
-  ellipse(wipeX, height / 2, 8, 8);
+  ellipse(wipeLocalX, 0, 8 / max(zoomLevel, 0.001), 8 / max(zoomLevel, 0.001));
+
+  pop(); // <- now we pop AFTER drawing the line in transformed space
 }
 }
 

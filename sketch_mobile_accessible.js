@@ -31,6 +31,12 @@ let lastTouchX = 0, lastTouchY = 0;
 let lastTapTime = 0;
 let tapCount = 0;
 let swipeStartX = 0, swipeStartY = 0;
+let isWipeDragging = false;
+let lastWipeXScreen = NaN;
+let lastBaseXScreen = NaN;
+let lastFittedW = NaN, lastFittedH = NaN;
+let lastPairLeftIndex = 0; // floor index
+let lastBlendAmt = 0; // store t for direction hint
 
 
 function isMobileLayout() {
@@ -85,14 +91,14 @@ function createSpeedSlider() {
   speedSlider = createSlider(0.1, 3, autoplaySpeed, 0.1);
   if (!speedSlider || !speedSlider.elt || !speedSlider.style) return;
   // Give Safari/iOS a real intrinsic size to respect
-speedSlider.size(100, 16);
+speedSlider.size(70, 14);
 
   speedSlider.input(() => {
     autoplaySpeed = speedSlider.value();
   });
 
-speedSlider.style("width", "100px");
-speedSlider.style("height", "16px");
+speedSlider.style("width", "70px");
+speedSlider.style("height", "14px");
   speedSlider.style("z-index", "1001");
   speedSlider.style("position", "fixed");
   speedSlider.style("display", "none");
@@ -108,8 +114,8 @@ speedSlider.style("height", "16px");
   // Force proper sizing on iOS/Android
 speedSlider.elt.style.appearance = 'none';
 speedSlider.elt.style.webkitAppearance = 'none';
-speedSlider.elt.style.height = '16px';
-speedSlider.elt.style.width  = '100px';
+speedSlider.elt.style.height = '14px';
+speedSlider.elt.style.width  = '70px';
 
 // One-time CSS injection for track/thumb
 if (!document.getElementById('range-css-patch')) {
@@ -119,8 +125,8 @@ if (!document.getElementById('range-css-patch')) {
     input[type="range"]{
       -webkit-appearance:none;
       appearance:none;
-height:16px;
-width:100px;
+height:14px;
+width:7-px;
       background:transparent;
     }
     input[type="range"]::-webkit-slider-runnable-track{
@@ -136,7 +142,7 @@ width:100px;
 input[type="range"]::-webkit-slider-thumb{
   -webkit-appearance:none;
   appearance:none;
-  width:16px; height:16px; 
+  width:14px; height:14px; 
   background:#fff; border:1px solid rgba(0,0,0,0.1);
   margin-top:-5px;
 }
@@ -147,7 +153,7 @@ input[type="range"]::-webkit-slider-thumb{
   `;
   document.head.appendChild(style);
 }
-speedSlider.elt.style.lineHeight = '16px';
+speedSlider.elt.style.lineHeight = '14px';
 speedSlider.elt.style.padding = '0';
 speedSlider.elt.style.touchAction = 'manipulation';
 
@@ -326,6 +332,20 @@ if (imgA && imgB) {
   noStroke();
   fill(255);
   ellipse(wipeLocalX, 0, 8 / max(zoomLevel, 0.001), 8 / max(zoomLevel, 0.001));
+
+  // --- screen-space bookkeeping for handle hit/drag ---
+const baseXScreen = width / 2 - fittedB.w / 2;
+const wipeXScreen = lastWipeDirection > 0
+  ? baseXScreen + fittedB.w * blendAmt
+  : baseXScreen + fittedB.w * (1 - blendAmt);
+
+// Save for input handling
+lastWipeXScreen = wipeXScreen;
+lastBaseXScreen = baseXScreen;
+lastFittedW = fittedB.w;
+lastFittedH = fittedB.h;
+lastPairLeftIndex = min(aIndex, bIndex);
+lastBlendAmt = blendAmt;
 
   pop(); // <- now we pop AFTER drawing the line in transformed space
 }
@@ -575,6 +595,21 @@ return;
     return;
   }
 
+    // ---- Wipe handle grab (screen-space) ----
+  if (!autoplay && isFinite(lastWipeXScreen) && isFinite(lastBaseXScreen) && isFinite(lastFittedW)) {
+    const handleRadius = 18; // px tap target
+    const imgTop = (height - lastFittedH) / 2;
+    const imgBottom = imgTop + lastFittedH;
+
+    if (mouseY >= imgTop && mouseY <= imgBottom && abs(mouseX - lastWipeXScreen) <= handleRadius) {
+      isWipeDragging = true;
+      dragging = false; // don't treat as frame drag
+      suppressDrag = true;
+      dirLockFrames = 12; // hold current direction briefly
+      return;
+    }
+  }
+
 let arrowZoneW = 80;
 if (showArrows && mouseX < arrowZoneW) {
   suppressDrag = true;
@@ -613,7 +648,24 @@ function inside(mx, my, x, y, w, h = w) {
   return mx > x && mx < x + w && my > y && my < y + h;
 }
 
+
+
 function mouseDragged() {
+    if (isWipeDragging && isFinite(lastBaseXScreen) && isFinite(lastFittedW)) {
+    // Map mouse to t across current pair
+    let t = (mouseX - lastBaseXScreen) / lastFittedW;
+    t = constrain(t, 0, 1);
+
+    // Convert t back to scroll units within the pair
+    targetScroll = lastPairLeftIndex + t;
+
+    // Update direction hint from movement
+    lastWipeDirection = (t >= lastBlendAmt) ? +1 : -1;
+    lastBlendAmt = t;
+
+    return; // don't move slider bar or anything else
+  }
+
   if (dragging) {
     dragDistance += abs(mouseX - pmouseX);  // ✅ Track how far user dragged
     updateDragAmt(mouseX);
@@ -627,6 +679,14 @@ function mouseDragged() {
 }
 
 function mouseReleased() {
+    if (isWipeDragging) {
+    isWipeDragging = false;
+    suppressDrag = false;
+    // Snap to nearest frame when you let go
+    targetScroll = constrain(round(targetScroll), 0, numImages - 1);
+    return;
+  }
+  
   if (dragging) {
     dragging = false;
     targetScroll = constrain(round(scrollAmount), 0, numImages - 1);
@@ -789,8 +849,8 @@ if (abs(deltaX) > 50) { // Minimum swipe distance
     
     // Calculate zoom change
     let zoomChange = currentDistance / lastTouchDistance;
-    zoomLevel *= zoomChange;
-    zoomLevel = constrain(zoomLevel, 0.5, 4); // Limit zoom range
+zoomLevel *= zoomChange;
+zoomLevel = constrain(zoomLevel, 1, 3); // lock min to 1, max a bit tighter
     
     lastTouchDistance = currentDistance;
     

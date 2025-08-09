@@ -85,21 +85,21 @@ function createSpeedSlider() {
   speedSlider = createSlider(0.1, 3, autoplaySpeed, 0.1);
   if (!speedSlider || !speedSlider.elt || !speedSlider.style) return;
   // Give Safari/iOS a real intrinsic size to respect
-speedSlider.size(160, 24);
+speedSlider.size(100, 16);
 
   speedSlider.input(() => {
     autoplaySpeed = speedSlider.value();
   });
 
-speedSlider.style("width", "160px");
-speedSlider.style("height", "24px");
+speedSlider.style("width", "100px");
+speedSlider.style("height", "16px");
   speedSlider.style("z-index", "1001");
   speedSlider.style("position", "fixed");
   speedSlider.style("display", "none");
   speedSlider.style("pointer-events", "auto");
   speedSlider.style("background", "rgba(0, 0, 0, 0.9)");
   speedSlider.style("border-radius", "6px");
-  speedSlider.style("border", "1px solid rgba(255,255,255,0.6)");
+  speedSlider.style("border", "none");
 
   //  iOS safe area friendly top-right placement:
   speedSlider.elt.style.right = "calc(env(safe-area-inset-right, 0px) + 12px)";
@@ -108,8 +108,8 @@ speedSlider.style("height", "24px");
   // Force proper sizing on iOS/Android
 speedSlider.elt.style.appearance = 'none';
 speedSlider.elt.style.webkitAppearance = 'none';
-speedSlider.elt.style.height = '24px';
-speedSlider.elt.style.width  = '160px';
+speedSlider.elt.style.height = '16px';
+speedSlider.elt.style.width  = '100px';
 
 // One-time CSS injection for track/thumb
 if (!document.getElementById('range-css-patch')) {
@@ -119,17 +119,17 @@ if (!document.getElementById('range-css-patch')) {
     input[type="range"]{
       -webkit-appearance:none;
       appearance:none;
-height:24px;
-width:160px;
+height:16px;
+width:100px;
       background:transparent;
     }
     input[type="range"]::-webkit-slider-runnable-track{
-      height:6px;
+      height:3px;
       border-radius:8px;
       background:rgba(255,255,255,0.6);
     }
      input[type="range"]::-moz-range-track{
-      height:6px;
+      height:3px;
       border-radius:8px;
       background:rgba(255,255,255,0.6);
     }
@@ -141,13 +141,13 @@ input[type="range"]::-webkit-slider-thumb{
   margin-top:-5px;
 }
     input[type="range"]::-moz-range-thumb{
-      width:16px; height:16px; margin-top:-5px;
+      width:10px; height:10px; margin-top:-3px;
       background:#fff; border:none;
     }
   `;
   document.head.appendChild(style);
 }
-speedSlider.elt.style.lineHeight = '24px';
+speedSlider.elt.style.lineHeight = '16px';
 speedSlider.elt.style.padding = '0';
 speedSlider.elt.style.touchAction = 'manipulation';
 

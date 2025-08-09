@@ -20,7 +20,16 @@ let lastWipeDirection = 1;
 let loadedImages = {};
 const MAX_LOADED_IMAGES = 3; // Very strict limit for mobile
 let frameCount = 0; // Add this if you don't have it
-
+let zoomLevel = 1;
+let zoomCenterX = 0, zoomCenterY = 0;
+let isZooming = false;
+let lastTouchDistance = 0;
+let panX = 0, panY = 0;
+let isPanning = false;
+let lastTouchX = 0, lastTouchY = 0;
+let lastTapTime = 0;
+let tapCount = 0;
+let swipeStartX = 0, swipeStartY = 0;
 
 function isMobileLayout() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -74,6 +83,7 @@ function setupOverlay() {
 function setup() {
   setupOverlay();
   canvas = createCanvas(windowWidth, windowHeight);
+  canvas.elt.style.touchAction = 'none';
   canvas.position(0, 0).style('z-index', '10');
 
   createSpeedSlider(); // ✅ Move it here so it's always defined
@@ -91,17 +101,21 @@ function createSpeedSlider() {
 
   speedSlider.input(() => {
     autoplaySpeed = speedSlider.value();
-    console.log("Speed changed to:", autoplaySpeed);
   });
 
-  speedSlider.style("width", "120px");
-  speedSlider.style("height", "20px");
+  speedSlider.style("width", "140px");
+  speedSlider.style("height", "24px");
   speedSlider.style("z-index", "1001");
   speedSlider.style("position", "fixed");
   speedSlider.style("display", "none");
   speedSlider.style("pointer-events", "auto");
-  speedSlider.style("background", "rgba(255,255,255,0.8)");
-  speedSlider.style("border-radius", "4px");
+  speedSlider.style("background", "rgba(255,255,255,0.9)");
+  speedSlider.style("border-radius", "6px");
+  speedSlider.style("border", "1px solid rgba(255,255,255,0.6)");
+
+  //  iOS safe area friendly top-right placement:
+  speedSlider.elt.style.right = "calc(env(safe-area-inset-right, 0px) + 12px)";
+  speedSlider.elt.style.top   = "calc(env(safe-area-inset-top, 0px) + 12px)";
 
   document.body.appendChild(speedSlider.elt);
 }
@@ -125,7 +139,6 @@ function startSketch() {
   if (!sketchStarted) {
     sketchStarted = true;
     overlayDiv.remove();
-    mousePressed(); // trigger tap logic
 
     if (isMobileLayout()) {
       showArrows = true;
@@ -215,44 +228,52 @@ if (imgA) {
   drawImageFitted(imgA);
 
 if (imgA && imgB) {
+  // Draw base A
   drawImageFitted(imgA);
 
   let blendAmt = constrain(lerpAmt, 0, 1);
-  let fittedSize = getFittedSize(imgB);
+  let fittedB = getFittedSize(imgB);
 
+  // Draw B with a clipping rectangle that grows/shrinks
   push();
   translate(width / 2, height / 2);
-  imageMode(CENTER);
 
-  if (lastWipeDirection > 0) {
-    // Left to right
-    copy(
-      imgB,
-      0, 0, int(imgB.width * blendAmt), imgB.height,
-      -fittedSize.w / 2, -fittedSize.h / 2,
-      int(fittedSize.w * blendAmt), fittedSize.h
-    );
-  } else {
-    // Right to left
-    let srcW = int(imgB.width * blendAmt);
-    let dstW = int(fittedSize.w * blendAmt);
-
-    copy(
-      imgB,
-      imgB.width - srcW, 0, srcW, imgB.height, // source: right side
-      -fittedSize.w / 2 + (fittedSize.w - dstW), -fittedSize.h / 2, // dest: right side
-      dstW, fittedSize.h
-    );
+  // Apply zoom & pan (see section 3 for the improved order)
+  if (zoomLevel !== 1) {
+    translate(panX, panY);
+    scale(zoomLevel);
   }
 
+  const ctx = drawingContext;
+  const left = -fittedB.w / 2;
+  const top  = -fittedB.h / 2;
+
+  let clipW = lastWipeDirection > 0
+    ? fittedB.w * blendAmt           // forward: left → right
+    : fittedB.w * (1 - blendAmt);    // backward: right → left (we clip from left but compute line accordingly)
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, clipW, fittedB.h);
+  ctx.clip();
+
+  imageMode(CENTER);
+  image(imgB, 0, 0, fittedB.w, fittedB.h);
+  ctx.restore();
   pop();
 
-  // Wipe line
-  let baseX = (width / 2 - fittedSize.w / 2);
-  let wipeX = baseX + fittedSize.w * (lastWipeDirection > 0 ? blendAmt : 1 - blendAmt);
-  stroke(255); strokeWeight(1);
-  line(wipeX, (height - fittedSize.h) / 2, wipeX, (height + fittedSize.h) / 2);
-  noStroke(); fill(255); ellipse(wipeX, height / 2, 8, 8);
+  // Draw the wipe line across the exact fitted width on screen
+  const baseX = width / 2 - fittedB.w / 2;
+  const wipeX = lastWipeDirection > 0
+    ? baseX + fittedB.w * blendAmt
+    : baseX + fittedB.w * (1 - blendAmt);
+
+  stroke(255);
+  strokeWeight(2);
+  line(wipeX, (height - fittedB.h) / 2, wipeX, (height + fittedB.h) / 2);
+  noStroke();
+  fill(255);
+  ellipse(wipeX, height / 2, 8, 8);
 }
 }
 
@@ -290,7 +311,19 @@ function drawLoadingSpinner() {
 
 function drawImageFitted(img) {
   let { w, h } = getFittedSize(img);
-  image(img, width / 2, height / 2, w, h);
+  
+  push();
+  translate(width / 2, height / 2);
+  
+  // Apply zoom and pan
+  if (zoomLevel !== 1) {
+    scale(zoomLevel);
+    translate(panX / zoomLevel, panY / zoomLevel);
+  }
+  
+  imageMode(CENTER);
+  image(img, 0, 0, w, h);
+  pop();
 }
 
 function getFittedSize(img) {
@@ -587,7 +620,7 @@ function keyPressed() {
   }
 }
 
-function touchStarted() { 
+function touchStarted() {
   // Check if touching the speed slider area
   if (speedSlider && speedSlider.elt && autoplay) {
     let rect = speedSlider.elt.getBoundingClientRect();
@@ -599,11 +632,38 @@ function touchStarted() {
       }
     }
   }
-  mousePressed(); 
-  return false; 
+
+  if (touches.length === 1) {
+    // Single touch - handle navigation or panning
+    let touch = touches[0];
+    lastTouchX = touch.x;
+    lastTouchY = touch.y;
+    
+    if (zoomLevel > 1) {
+      // If zoomed in, enable panning
+      isPanning = true;
+    } else {
+      // If not zoomed, handle normal navigation
+      mousePressed();
+    }
+  } else if (touches.length === 2) {
+    // Two finger touch - start zoom
+    isZooming = true;
+    let touch1 = touches[0];
+    let touch2 = touches[1];
+    
+    // Calculate distance between touches
+    lastTouchDistance = dist(touch1.x, touch1.y, touch2.x, touch2.y);
+    
+    // Calculate center point between touches
+    zoomCenterX = (touch1.x + touch2.x) / 2 - width / 2;
+    zoomCenterY = (touch1.y + touch2.y) / 2 - height / 2;
+  }
+  
+  return false;
 }
 
-function touchMoved() { 
+function touchMoved() {
   // Check if touching the speed slider area
   if (speedSlider && speedSlider.elt && autoplay) {
     let rect = speedSlider.elt.getBoundingClientRect();
@@ -615,11 +675,77 @@ function touchMoved() {
       }
     }
   }
-  mouseDragged(); 
-  return false; 
+
+  if (touches.length === 1 && isPanning && zoomLevel > 1) {
+    // Single finger pan when zoomed
+    let touch = touches[0];
+    let deltaX = touch.x - lastTouchX;
+    let deltaY = touch.y - lastTouchY;
+    
+    panX += deltaX;
+    panY += deltaY;
+    
+    // Limit panning to image bounds
+    let maxPanX = (width * (zoomLevel - 1)) / 2;
+    let maxPanY = (height * (zoomLevel - 1)) / 2;
+    panX = constrain(panX, -maxPanX, maxPanX);
+    panY = constrain(panY, -maxPanY, maxPanY);
+    
+    lastTouchX = touch.x;
+    lastTouchY = touch.y;
+    
+  } else if (touches.length === 1 && !isPanning) {
+    // Single finger swipe for navigation
+    let touch = touches[0];
+    let deltaX = touch.x - lastTouchX;
+    
+    // 📱 SWIPE NAVIGATION: Left/Right swipes
+    if (abs(deltaX) > 50) { // Minimum swipe distance
+      if (deltaX > 0) {
+        // Swipe RIGHT = go to PREVIOUS image
+        targetScroll = max(0, round(scrollAmount) - 1);
+      } else {
+        // Swipe LEFT = go to NEXT image
+        targetScroll = min(numImages - 1, round(scrollAmount) + 1);
+      }
+      lastTouchX = touch.x; // Reset to prevent multiple triggers
+    }
+    
+  } else if (touches.length === 2 && isZooming) {
+    // Two finger zoom
+    let touch1 = touches[0];
+    let touch2 = touches[1];
+    let currentDistance = dist(touch1.x, touch1.y, touch2.x, touch2.y);
+    
+    // Calculate zoom change
+    let zoomChange = currentDistance / lastTouchDistance;
+    zoomLevel *= zoomChange;
+    zoomLevel = constrain(zoomLevel, 0.5, 4); // Limit zoom range
+    
+    lastTouchDistance = currentDistance;
+    
+    // Update zoom center
+    zoomCenterX = (touch1.x + touch2.x) / 2 - width / 2;
+    zoomCenterY = (touch1.y + touch2.y) / 2 - height / 2;
+  }
+  
+  return false;
 }
 
-function touchEnded() { mouseReleased(); return false; }
+function touchEnded() {
+  isPanning = false;
+  isZooming = false;
+  
+  // Reset zoom if very close to 1
+  if (abs(zoomLevel - 1) < 0.1) {
+    zoomLevel = 1;
+    panX = 0;
+    panY = 0;
+  }
+  
+  mouseReleased();
+  return false;
+}
 
 function getImage(index, useCentered = false) {
   if (!allImageURLs) return null;

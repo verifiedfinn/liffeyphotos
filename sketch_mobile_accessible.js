@@ -97,7 +97,7 @@ speedSlider.style("height", "24px");
   speedSlider.style("position", "fixed");
   speedSlider.style("display", "none");
   speedSlider.style("pointer-events", "auto");
-  speedSlider.style("background", "rgba(255,255,255,0.9)");
+  speedSlider.style("background", "rgba(0, 0, 0, 0.9)");
   speedSlider.style("border-radius", "6px");
   speedSlider.style("border", "1px solid rgba(255,255,255,0.6)");
 
@@ -133,12 +133,13 @@ width:160px;
       border-radius:8px;
       background:rgba(255,255,255,0.6);
     }
-    input[type="range"]::-webkit-slider-thumb{
-      -webkit-appearance:none;
-      appearance:none;
-      width:16px; height:16px; margin-top:-5px;
-      background:#fff; margin-top:-6px; border:1px solid rgba(0,0,0,0.1);
-    }
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  appearance:none;
+  width:16px; height:16px; 
+  background:#fff; border:1px solid rgba(0,0,0,0.1);
+  margin-top:-5px;
+}
     input[type="range"]::-moz-range-thumb{
       width:16px; height:16px; margin-top:-5px;
       background:#fff; border:none;
@@ -182,18 +183,26 @@ function getActiveImages() {
   let list = centeredView ? centeredImages : images;
   let urls = centeredView ? allImageURLs.centered : allImageURLs.normal;
 
-  // Only check ONCE, not every frame
-let iFloor = Math.floor(scrollAmount);
-let iCeil  = Math.min(iFloor + 1, urls.length - 1);
+  // Guard if JSON hasn't landed yet
+  if (!urls || urls.length === 0) return list;
 
-// Load floor
-if (!list[iFloor] && iFloor >= 0 && iFloor < urls.length) {
-  list[iFloor] = loadImage(urls[iFloor]);
-}
-// Load ceil
-if (!list[iCeil] && iCeil >= 0 && iCeil < urls.length) {
-  list[iCeil] = loadImage(urls[iCeil]);
-}ageImageMemory(list, currentIndex);
+  // Only check ONCE, not every frame
+  let iFloor = Math.floor(scrollAmount);
+  let iCeil  = Math.min(iFloor + 1, urls.length - 1);
+
+  // Load floor
+  if (!list[iFloor] && iFloor >= 0 && iFloor < urls.length) {
+    list[iFloor] = loadImage(urls[iFloor]);
+  }
+  // Load ceil
+  if (!list[iCeil] && iCeil >= 0 && iCeil < urls.length) {
+    list[iCeil] = loadImage(urls[iCeil]);
+  }
+
+  // Cleanup distant images to save memory
+  manageImageMemory(list, iFloor);
+
+  // RETURN THE LIST ✅
   return list;
 }
 
